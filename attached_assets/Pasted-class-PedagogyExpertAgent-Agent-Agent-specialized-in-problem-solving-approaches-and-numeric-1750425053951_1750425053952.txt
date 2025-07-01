@@ -1,0 +1,265 @@
+class PedagogyExpertAgent(Agent):
+    """Agent specialized in problem-solving approaches and numerical/application-based questions."""
+    
+    def __init__(self, model_name: str = DEFAULT_MODEL, temperature: float = 0.2, ncert_vectorstore: Chroma = None):
+        """Initialize the pedagogy expert agent."""
+        super().__init__(model_name, temperature)
+        self.name = "PedagogyExpert"
+        self.ncert_vectorstore = ncert_vectorstore
+        self.system_prompt = """You are an expert in problem-solving methodologies and CBSE Class 10 assessment patterns with deep knowledge of numerical problem-solving and application-based questions. Your role is to:
+
+1. Create structured numerical problems aligned with CBSE Class 10 syllabus and board exam patterns
+2. Design step-by-step problem-solving approaches for physics, mathematics, and science topics
+3. Develop application-based questions that connect theoretical concepts to real-world scenarios
+4. Provide detailed solutions with clear mathematical steps and reasoning
+5. Ensure all problems follow CBSE marking schemes and difficulty levels
+6. Focus on numerical competency and analytical problem-solving skills
+
+Focus on creating comprehensive problem sets with varying difficulty levels, detailed solutions, and clear problem-solving strategies specifically aligned with CBSE Class 10 board examination requirements.
+"""
+    
+    def get_ncert_context(self, subject: str, topic: str, subtopics: str, k: int = 3) -> str:
+        """Retrieve relevant NCERT context for problem-solving and examples"""
+        if not self.ncert_vectorstore:
+            return ""
+        
+        try:
+            search_query = f"{subject} {topic} {subtopics} NCERT problems numerical questions solved examples CBSE Class 10"
+            docs = self.ncert_vectorstore.similarity_search(search_query, k=k)
+            context = "\n\n".join([doc.page_content for doc in docs])
+            return context
+        except Exception as e:
+            print(f"Error retrieving NCERT context for pedagogy: {e}")
+            return ""
+    
+    def process(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Process input data to create numerical problems and application-based questions."""
+        components = input_data.get("components", [])
+        curriculum_analysis = input_data.get("curriculum_analysis", {})
+        subject = input_data.get("subject", "")
+        topic = input_data.get("topic", "")
+        subtopics = input_data.get("subtopics", "")
+        grade_level = input_data.get("grade_level", "")
+        optional_pdf_context = input_data.get("context", "")  # Context from optional PDF
+        
+        # Get RAG context from NCERT database
+        ncert_context = self.get_ncert_context(subject, topic, subtopics)
+        
+        # Combine both contexts
+        combined_context = f"""
+        NCERT Database Context (for problem examples and solutions):
+        {ncert_context}
+        
+        Optional PDF Context (additional materials):
+        {optional_pdf_context}
+        """
+        
+        # Extract learning objectives
+        learning_objectives = curriculum_analysis.get("learning_objectives", [])
+        objectives_text = "\n".join([f"- {obj}" for obj in learning_objectives])
+        
+        # Process each component to add numerical problems and applications
+        enhanced_components = []
+        
+        for component in components:
+            component_type = component.component_type
+            content = component.content
+            
+            prompt = f"""
+Transform and enhance the following {component_type.lower()} for a lesson on {topic} (subtopics: {subtopics}) in {subject} for {grade_level} students by adding comprehensive numerical problems and application-based questions.
+
+Learning Objectives:
+{objectives_text}
+
+Original Content:
+{content}
+
+RAG Context for Problem Creation:
+{combined_context}
+
+Enhance this content by:
+1. Adding 3-5 numerical problems with step-by-step solutions aligned with CBSE Class 10 board exam patterns
+2. Including application-based questions that connect theory to real-world scenarios
+3. Providing detailed mathematical solutions with clear reasoning steps
+4. Ensuring problems follow CBSE marking schemes (1, 2, 3, and 5 mark questions)
+5. Creating problems of varying difficulty levels (basic, intermediate, advanced)
+6. Including formula derivations where relevant
+7. Adding practice problems for students to solve independently
+
+Structure the enhanced content with:
+- Original content (if relevant)
+- Numerical Problems Section (with detailed solutions)
+- Application-Based Questions Section
+- Practice Problems Section (without solutions for student practice)
+
+Focus on numerical competency and problem-solving skills specific to CBSE Class 10 requirements.
+"""
+            
+            messages = [
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": prompt}
+            ]
+            
+            enhanced_content = self._call_llm(messages)
+            
+            # Create enhanced component
+            enhanced_component = LessonComponent(
+                component_type=component.component_type,
+                content=enhanced_content,
+                order=component.order,
+                metadata=component.metadata
+            )
+            enhanced_components.append(enhanced_component)
+        
+        # Add a new component for comprehensive problem-solving strategies
+        problem_solving_strategies_prompt = f"""
+Create a comprehensive "Numerical Problem-Solving Strategies" section for the topic "{topic}" and subtopics "{subtopics}" in {subject} for {grade_level} students.
+
+Learning Objectives:
+{objectives_text}
+
+RAG Context:
+{combined_context}
+
+This section should include:
+1. Step-by-step problem-solving methodology specific to this topic
+2. 5-7 CBSE board exam style numerical problems with complete solutions
+3. Formula sheet with derivations and applications
+4. Common mistakes and how to avoid them
+5. Real-world applications with numerical examples
+6. Quick calculation techniques and shortcuts
+7. Problem classification based on CBSE marking schemes (1, 2, 3, 5 marks)
+
+Structure the problems to cover:
+- Basic conceptual problems (1-2 marks)
+- Standard numerical problems (3 marks)
+- Complex application problems (5 marks)
+- Previous years' board exam style questions
+
+Ensure all solutions show complete mathematical steps with proper units and significant figures as per CBSE requirements.
+"""
+        
+        messages = [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": problem_solving_strategies_prompt}
+        ]
+        
+        problem_solving_strategies = self._call_llm(messages)
+        
+        # Create problem-solving strategies component
+        strategies_component = LessonComponent(
+            component_type="Numerical Problem-Solving Strategies",
+            content=problem_solving_strategies,
+            order=6,
+            metadata={}
+        )
+        enhanced_components.append(strategies_component)
+        
+        # Add a comprehensive assessment component with numerical focus
+        assessment_prompt = f"""
+Create a "CBSE-Style Numerical Assessment" section for the topic "{topic}" and subtopics "{subtopics}" in {subject} for {grade_level} students.
+
+Learning Objectives:
+{objectives_text}
+
+RAG Context:
+{combined_context}
+
+This section should include:
+1. A complete question paper format following CBSE pattern
+2. Questions distributed as per CBSE marking scheme:
+   - 5 questions of 1 mark each (MCQ/Fill in the blanks)
+   - 4 questions of 2 marks each (Short answer with numerical)
+   - 3 questions of 3 marks each (Numerical problems)
+   - 2 questions of 5 marks each (Long answer/Application problems)
+3. Detailed marking scheme with step-wise marking
+4. Model answers with complete solutions
+5. Time allocation guidelines
+6. Common errors and marking deductions
+
+**EXAMPLE FORMAT:**
+For a topic like "Electricity - Ohm's Law" in Physics for Class 10:
+
+**CBSE-Style Question Paper - Electricity (Ohm's Law)**
+**Time: 1 hour**                                                             **Maximum Marks: 30**
+
+**SECTION A - Multiple Choice Questions (1 mark each)**
+1. The SI unit of resistance is:
+   (a) Volt  (b) Ampere  (c) Ohm  (d) Watt
+   **Answer: (c) Ohm**
+
+2. According to Ohm's law, V = IR. If voltage is doubled and resistance remains constant, current will:
+   (a) Remain same  (b) Double  (c) Become half  (d) Become four times
+   **Answer: (b) Double**
+
+**SECTION B - Short Answer Questions (2 marks each)**
+3. A resistor of 5Ω is connected to a 10V battery. Calculate the current flowing through it.
+   **Solution:** Using Ohm's Law: I = V/R = 10V/5Ω = 2A
+   **Marking:** 1 mark for formula, 1 mark for correct answer with unit
+
+4. Define Ohm's Law and state its mathematical expression.
+   **Solution:** Ohm's Law states that current through a conductor is directly proportional to voltage across it, provided temperature remains constant. V = IR
+   **Marking:** 1 mark for definition, 1 mark for formula
+
+**SECTION C - Long Answer Questions (3 marks each)**
+5. A circuit has three resistors of 2Ω, 3Ω, and 5Ω connected in series to a 12V battery. Calculate:
+   (a) Total resistance  (b) Total current  (c) Voltage across 5Ω resistor
+   **Solution:** 
+   (a) R_total = 2+3+5 = 10Ω                     [1 mark]
+   (b) I = V/R = 12V/10Ω = 1.2A                  [1 mark]
+   (c) V_5Ω = I×R = 1.2A×5Ω = 6V                 [1 mark]
+
+**SECTION D - Application Problems (5 marks each)**
+6. A household uses the following appliances daily:
+   - 4 LED bulbs (10W each) for 6 hours
+   - 1 refrigerator (150W) for 24 hours
+   - 1 TV (80W) for 4 hours
+   
+   If electricity costs ₹5 per kWh, calculate:
+   (a) Total energy consumed per day
+   (b) Monthly electricity bill (30 days)
+   
+   **Solution:**
+   Energy by bulbs = 4×10W×6h = 240Wh = 0.24kWh     [1 mark]
+   Energy by refrigerator = 150W×24h = 3600Wh = 3.6kWh [1 mark]
+   Energy by TV = 80W×4h = 320Wh = 0.32kWh          [1 mark]
+   Total daily energy = 0.24+3.6+0.32 = 4.16kWh    [1 mark]
+   Monthly bill = 4.16×30×₹5 = ₹624                 [1 mark]
+
+**Common Errors and Deductions:**
+- Not writing units: -0.5 marks per question
+- Wrong formula used: -1 mark
+- Calculation errors: -0.5 marks
+- Incomplete steps: -1 mark per missing step
+
+Ensure all numerical problems are:
+- Aligned with CBSE Class 10 syllabus
+- Based on real-world applications
+- Include proper units and significant figures
+- Follow standard CBSE problem formats
+- Cover all subtopics comprehensively
+"""
+        
+        messages = [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": assessment_prompt}
+        ]
+        
+        assessment_content = self._call_llm(messages)
+        
+        # Create assessment component
+        assessment_component = LessonComponent(
+            component_type="CBSE-Style Numerical Assessment",
+            content=assessment_content,
+            order=7,
+            metadata={}
+        )
+        enhanced_components.append(assessment_component)
+        
+        return {
+            "enhanced_components": enhanced_components,
+            "subject": subject,
+            "topic": topic,
+            "grade_level": grade_level,
+            "subtopics": subtopics
+        }
