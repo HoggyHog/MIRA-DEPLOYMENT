@@ -11,7 +11,7 @@ from langsmith.wrappers import wrap_openai
 os.environ.setdefault("LANGSMITH_TRACING", "true")
 os.environ.setdefault("LANGSMITH_PROJECT", "Mira-Lesson-Generation")
 os.environ.setdefault("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
-os.environ.setdefault("LANGSMITH_API_KEY", "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")
+os.environ.setdefault("LANGSMITH_API_KEY", "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")
 langsmith_client = Client()
 
 # For vector database and embeddings
@@ -42,8 +42,17 @@ DEFAULT_MODEL = "gpt-4o-mini"
 FASTER_MODEL = "gpt-4o-mini"
 DEFAULT_TEMPERATURE = 0.2
 DEFAULT_MAX_TOKENS = 4000
-# Add your OpenAI API key here or set it as an environment variable
-OPENAI_API_KEY = "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"  # Replace with your actual API key
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
+# Get OpenAI API key from environment variable
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    raise ValueError("OPENAI_API_KEY environment variable is not set")
+
+# Ensure OPENAI_API_KEY is a string for type safety
+assert isinstance(OPENAI_API_KEY, str)
 
 
 

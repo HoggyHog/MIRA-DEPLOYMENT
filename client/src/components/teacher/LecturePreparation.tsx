@@ -475,17 +475,17 @@ export const LecturePreparation = () => {
     }, 600);
 
     try {
-      const response = await fetch('http://localhost:4444/api/generate-lesson', {
+      const response = await fetch('/api/generate-lesson', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          grade: formData.grade_level,
+          grade_level: formData.grade_level,
           subject: formData.subject,
-          sub_topic: formData.topic,
+          topic: formData.topic,
           subtopics: formData.subtopics,
-          special_remarks: formData.special_requirements || ''
+          special_requirements: formData.special_requirements || ''
         })
       });
 
@@ -508,7 +508,7 @@ export const LecturePreparation = () => {
               title: "Lesson Generated Successfully",
               description: "Your comprehensive lesson plan is ready for review."
             });
-          }, 300);
+          }, 100);
         } else {
           toast({
             title: "Generation Failed",
