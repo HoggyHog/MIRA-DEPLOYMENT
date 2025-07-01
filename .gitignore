@@ -1,0 +1,13 @@
+# Ignore large files and generated assets
+attached_assets/*.pdf
+attached_assets/chroma_db_curriculum/
+cbse_validation_db/
+chroma_db_electricity/
+chroma_db_lesson_ncjescsa12_5f4260ed17/
+uploads/
+*.log
+# Ignore Python cache
+__pycache__/
+# Ignore environment and system files
+.env
+.DS_Store 

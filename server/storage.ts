@@ -24,18 +24,18 @@ export interface IStorage {
   // User management
   createUser(user: InsertUser): Promise<User>;
   getUserByAuth0Id(auth0Id: string): Promise<User | undefined>;
-  getUserById(id: number): Promise<User | undefined>;
-  updateUser(id: number, updates: Partial<InsertUser>): Promise<User | undefined>;
+  getUserById(id: string): Promise<User | undefined>;
+  updateUser(id: string, updates: Partial<InsertUser>): Promise<User | undefined>;
   
   // Student profile management
   createStudentProfile(profile: InsertStudentProfile): Promise<StudentProfile>;
-  getStudentProfileByUserId(userId: number): Promise<StudentProfile | undefined>;
-  updateStudentProfile(userId: number, updates: Partial<InsertStudentProfile>): Promise<StudentProfile | undefined>;
+  getStudentProfileByUserId(userId: string): Promise<StudentProfile | undefined>;
+  updateStudentProfile(userId: string, updates: Partial<InsertStudentProfile>): Promise<StudentProfile | undefined>;
   
   // Teacher profile management
   createTeacherProfile(profile: InsertTeacherProfile): Promise<TeacherProfile>;
-  getTeacherProfileByUserId(userId: number): Promise<TeacherProfile | undefined>;
-  updateTeacherProfile(userId: number, updates: Partial<InsertTeacherProfile>): Promise<TeacherProfile | undefined>;
+  getTeacherProfileByUserId(userId: string): Promise<TeacherProfile | undefined>;
+  updateTeacherProfile(userId: string, updates: Partial<InsertTeacherProfile>): Promise<TeacherProfile | undefined>;
   
   // User with profile data
   getUserWithProfile(auth0Id: string): Promise<{ user: User; profile: StudentProfile | TeacherProfile | undefined } | undefined>;
@@ -43,7 +43,10 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   async createUser(user: InsertUser): Promise<User> {
-    const [newUser] = await db.insert(users).values(user).returning();
+    // Generate unique ID if not provided
+    const userId = user.auth0_id ? `user_${user.auth0_id.replace(/[^a-zA-Z0-9]/g, '_')}` : `user_${Date.now()}`;
+    const userWithId = { ...user, id: userId };
+    const [newUser] = await db.insert(users).values(userWithId).returning();
     return newUser;
   }
 
@@ -52,12 +55,12 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async getUserById(id: number): Promise<User | undefined> {
+  async getUserById(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
   }
 
-  async updateUser(id: number, updates: Partial<InsertUser>): Promise<User | undefined> {
+  async updateUser(id: string, updates: Partial<InsertUser>): Promise<User | undefined> {
     const [updated] = await db.update(users).set({
       ...updates,
       updated_at: new Date()
@@ -70,12 +73,12 @@ export class DatabaseStorage implements IStorage {
     return newProfile;
   }
 
-  async getStudentProfileByUserId(userId: number): Promise<StudentProfile | undefined> {
+  async getStudentProfileByUserId(userId: string): Promise<StudentProfile | undefined> {
     const [profile] = await db.select().from(student_profiles).where(eq(student_profiles.user_id, userId));
     return profile;
   }
 
-  async updateStudentProfile(userId: number, updates: Partial<InsertStudentProfile>): Promise<StudentProfile | undefined> {
+  async updateStudentProfile(userId: string, updates: Partial<InsertStudentProfile>): Promise<StudentProfile | undefined> {
     const [updated] = await db.update(student_profiles).set(updates).where(eq(student_profiles.user_id, userId)).returning();
     return updated;
   }
@@ -85,12 +88,12 @@ export class DatabaseStorage implements IStorage {
     return newProfile;
   }
 
-  async getTeacherProfileByUserId(userId: number): Promise<TeacherProfile | undefined> {
+  async getTeacherProfileByUserId(userId: string): Promise<TeacherProfile | undefined> {
     const [profile] = await db.select().from(teacher_profiles).where(eq(teacher_profiles.user_id, userId));
     return profile;
   }
 
-  async updateTeacherProfile(userId: number, updates: Partial<InsertTeacherProfile>): Promise<TeacherProfile | undefined> {
+  async updateTeacherProfile(userId: string, updates: Partial<InsertTeacherProfile>): Promise<TeacherProfile | undefined> {
     const [updated] = await db.update(teacher_profiles).set(updates).where(eq(teacher_profiles.user_id, userId)).returning();
     return updated;
   }

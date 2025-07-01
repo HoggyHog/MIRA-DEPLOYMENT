@@ -27,7 +27,10 @@ router.post('/auth0-webhook', async (req, res) => {
           auth0_id: auth0Id,
           email: email,
           name: name,
-          role: role
+          role: role,
+          roles: [role],
+          first_name: name.split(' ')[0],
+          last_name: name.split(' ').slice(1).join(' ') || null
         });
         
         // Create profile based on role
@@ -81,35 +84,73 @@ router.get('/profile', async (req, res) => {
     
     if (!decoded || !decoded.sub) {
       console.log('Invalid token format');
-      return res.status(401).json({ error: 'Invalid token' });
+      return res.status(401).json({ error: 'Invalid token format' });
     }
     
     const auth0Id = decoded.sub;
-    const email = decoded.email || 'unknown@example.com';
-    const name = decoded.name || decoded.nickname || email.split('@')[0];
+    // Create unique fallback email using Auth0 ID to avoid duplicate key violations
+    const email = decoded.email || `user_${auth0Id.replace(/[^a-zA-Z0-9]/g, '_')}@unknown.local`;
+    const name = decoded.name || decoded.nickname || `User_${auth0Id.split('|').pop()}`;
     
-    console.log('Creating user response for Auth0 user:', email);
+    console.log('Looking up user for Auth0 ID:', auth0Id);
     
-    // Get role from URL parameter or default to student
-    const roleParam = req.query.role as string;
-    const userRole = roleParam === 'teacher' ? 'teacher' : 'student';
+    // Try to get existing user from database
+    let userWithProfile = await storage.getUserWithProfile(auth0Id);
     
-    res.json({
-      user: {
-        id: `auth0_${auth0Id.replace(/[^a-zA-Z0-9]/g, '_')}`,
-        auth0_id: auth0Id,
-        email: email,
-        name: name,
-        role: userRole,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      profile: undefined
-    });
+    if (!userWithProfile) {
+      console.log('User not found, creating new user:', email);
+      
+      // Get role from URL parameter or default to student
+      const roleParam = req.query.role as string;
+      const userRole = roleParam === 'teacher' ? 'teacher' : 'student';
+      
+      try {
+        // Create new user
+        const newUser = await storage.createUser({
+          auth0_id: auth0Id,
+          email: email,
+          name: name,
+          role: userRole,
+          roles: [userRole], // Add to roles array as well
+          first_name: name.split(' ')[0],
+          last_name: name.split(' ').slice(1).join(' ') || null
+        });
+        
+        // Create profile based on role
+        let profile = undefined;
+        if (userRole === 'student') {
+          profile = await storage.createStudentProfile({
+            user_id: newUser.id,
+            grade_level: '10',
+            section: 'A',
+            subjects: ['Mathematics', 'Science', 'English']
+          });
+        } else if (userRole === 'teacher') {
+          profile = await storage.createTeacherProfile({
+            user_id: newUser.id,
+            subjects: ['Mathematics'],
+            grades: ['10'],
+            department: 'Science'
+          });
+        }
+        
+        userWithProfile = { user: newUser, profile };
+        console.log(`Created new ${userRole} user:`, email);
+      } catch (createError) {
+        console.error('Error creating user:', createError);
+        // If user creation fails, try to get the user again in case it was created by another request
+        userWithProfile = await storage.getUserWithProfile(auth0Id);
+        if (!userWithProfile) {
+          throw createError; // Re-throw the error if user still doesn't exist
+        }
+      }
+    }
+    
+    res.json(userWithProfile);
     
   } catch (error) {
-    console.error('Error in profile route:', (error as Error).message);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error fetching user profile:', error);
+    res.status(500).json({ error: 'Failed to fetch user profile' });
   }
 });
 

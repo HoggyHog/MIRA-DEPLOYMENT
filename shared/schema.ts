@@ -21,7 +21,7 @@ export const users = pgTable('users', {
 // Student-specific profile data
 export const student_profiles = pgTable('student_profiles', {
   id: serial('id').primaryKey(),
-  user_id: integer('user_id').references(() => users.id).notNull(),
+  user_id: varchar('user_id').references(() => users.id).notNull(),
   grade_level: varchar('grade_level', { length: 10 }),
   section: varchar('section', { length: 10 }),
   roll_number: varchar('roll_number', { length: 20 }),
@@ -32,7 +32,7 @@ export const student_profiles = pgTable('student_profiles', {
 // Teacher-specific profile data
 export const teacher_profiles = pgTable('teacher_profiles', {
   id: serial('id').primaryKey(),
-  user_id: integer('user_id').references(() => users.id).notNull(),
+  user_id: varchar('user_id').references(() => users.id).notNull(),
   employee_id: varchar('employee_id', { length: 50 }),
   subjects: text('subjects').array(), // Array of subjects they teach
   grades: text('grades').array(), // Array of grades they teach

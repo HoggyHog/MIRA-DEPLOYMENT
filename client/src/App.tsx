@@ -5,8 +5,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Router, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import AuthProvider from "./providers/AuthProvider";
+import AuthProvider, { useAuth } from "./providers/AuthProvider";
 import LoginButton from "./components/auth/LoginButton";
+import DebugAuth from "./components/DebugAuth";
 import Index from "./pages/Index";
 import StudentDashboard from "./pages/StudentDashboard";
 import ParentDashboard from "./pages/ParentDashboard";
@@ -56,17 +57,21 @@ const ProtectedRoute = ({ component: Component, ...props }: { component: React.C
 
 const AppContent = () => {
   return (
-    <Router>
-      <Route path="/" component={Index} />
-      {/* Public pilot routes - no authentication required */}
-      <Route path="/teacher-pilot" component={TeacherPilot} />
-      <Route path="/student-pilot" component={StudentPilot} />
-      {/* Protected routes - authentication required */}
-      <Route path="/student-dashboard" component={(props) => <ProtectedRoute component={StudentDashboard} {...props} />} />
-      <Route path="/parent-dashboard" component={(props) => <ProtectedRoute component={ParentDashboard} {...props} />} />
-      <Route path="/admin-dashboard" component={(props) => <ProtectedRoute component={AdminDashboard} {...props} />} />
-      <Route path="/teacher-dashboard" component={(props) => <ProtectedRoute component={TeacherDashboard} {...props} />} />
-    </Router>
+    <>
+      <Router>
+        <Route path="/" component={Index} />
+        {/* Public pilot routes - no authentication required */}
+        <Route path="/teacher-pilot" component={TeacherPilot} />
+        <Route path="/student-pilot" component={StudentPilot} />
+        {/* Protected routes - authentication required */}
+        <Route path="/student-dashboard" component={(props) => <ProtectedRoute component={StudentDashboard} {...props} />} />
+        <Route path="/teacher-dashboard" component={(props) => <ProtectedRoute component={TeacherDashboard} {...props} />} />
+        {/* Direct access routes - no authentication required */}
+        <Route path="/parent-dashboard" component={ParentDashboard} />
+        <Route path="/admin-dashboard" component={AdminDashboard} />
+      </Router>
+      <DebugAuth />
+    </>
   );
 };
 

@@ -1,149 +1,132 @@
-# Mira by Centum AI
+# Mira by Centum AI - Educational Management System
 
-A comprehensive educational management platform with AI-powered exam/lesson generation, doubt solving, content summarization, and dashboards for students, teachers, parents, and admins.
+A comprehensive educational management platform for students, teachers, parents, and administrators.
 
----
+## 🚀 Quick Start
 
-## 🚀 Features
-- **AI Exam Generator**: Generate CBSE-aligned exam papers with advanced logic (Python FastAPI, OpenAI, ChromaDB)
-- **AI Lesson Generator**: Multi-agent RAG-based lesson creation (Python FastAPI, LangChain, OpenAI)
-- **Doubt Solving**: Student chat and context-aware doubt resolution (Express/Node, Python, OpenAI)
-- **Content Summarizer**: Summarize uploaded PDFs or pasted text for study/memorization (FastAPI, OpenAI)
-- **Dashboards**: Modern, fluid dashboards for students, teachers, parents, and admins (React + Shadcn-ui)
-- **Light/Dark Mode**: Toggle for a beautiful, accessible UI
+### Setup Instructions
+To run the application with Auth0 authentication:
 
----
+1. **Set up Auth0** (follow `AUTH0_SETUP.md`)
+2. **Configure credentials** in `client/src/config/auth0.ts`:
+   ```typescript
+   export const auth0Config = {
+     domain: "your-tenant.us.auth0.com",
+     clientId: "your-client-id-here",
+     audience: "https://your-app-api",
+     redirectUri: window.location.origin,
+     scope: "openid profile email",
+   };
+   ```
+3. **Install and Run**:
+   ```bash
+   npm install
+   npm run dev
+   ```
+4. **Access** - Visit `http://localhost:5173` to see the login page
 
-## 🗂️ Project Structure
+## 🏗️ Architecture
 
+### Authentication System
+- **Auth0 Integration**: Full Auth0 authentication with JWT verification
+- **Role-Based Access**: Automatic redirection based on user roles
+- **Database Integration**: User profiles stored in PostgreSQL/Neon
+
+### Dashboard Routes
+- `/student-dashboard` - Student portal (requires authentication)
+- `/teacher-dashboard` - Teacher portal (requires authentication) 
+- `/parent-dashboard` - Parent portal (direct access, no authentication)
+- `/admin-dashboard` - Admin portal (direct access, no authentication)
+- `/student-pilot` - Demo student features (public)
+- `/teacher-pilot` - Demo teacher features (public)
+
+### Tech Stack
+- **Frontend**: React, TypeScript, Tailwind CSS, Vite
+- **Backend**: Node.js, Express, TypeScript
+- **Database**: PostgreSQL (Neon), Drizzle ORM
+- **Authentication**: Auth0 (production) / Mock (development)
+- **UI**: shadcn/ui components
+
+## 🔧 Development
+
+### Project Structure
 ```
-root/
-  client/           # React frontend (Shadcn-ui, Tailwind, Vite)
-  server/           # Node.js/Express backend (legacy endpoints)
-  fastapi_exam_api.py, ... # Python FastAPI APIs (AI, RAG, summarization)
-  QPA_2.py, final_agentic_m4_RAG_logic.py, ... # Core AI logic
-  attached_assets/  # PDFs, vector DBs, assets
-  .env              # Environment variables (not committed)
-```
-
----
-
-## 🧑‍💻 API Endpoints
-
-### Lesson Generation (FastAPI)
-```
-POST /api/generate-lesson
-{
-  "grade": "10",
-  "subject": "Science",
-  "sub_topic": "Electricity",
-  "subtopics": "Ohm's Law, Circuits",
-  "special_remarks": "Focus on real-world applications"
-}
-```
-**Response:**
-```json
-{ "success": true, "lesson_content": "...markdown..." }
-```
-
-### Exam Generation (FastAPI)
-```
-POST /api/generate-exam
-{
-  "grade": "10",
-  "subject": "Mathematics",
-  "sub_topic": "Quadratic Equations",
-  "difficulty": "medium",
-  "question_types": ["mcq", "short_answer"],
-  "duration": 90,
-  "special_remarks": "Focus on solving methods",
-  "total_marks": 80
-}
-```
-**Response:**
-```json
-{ "success": true, "exam_paper": { ... } }
-```
-
-### Content Summarization (FastAPI)
-```
-POST /api/summarize-content
-# Multipart: file=PDF or JSON: { "text": "..." }
-```
-**Response:**
-```json
-{ "summary": "...student-friendly summary..." }
+├── client/                 # React frontend
+│   ├── src/
+│   │   ├── components/     # Reusable UI components
+│   │   ├── pages/         # Dashboard pages
+│   │   ├── providers/     # Auth provider
+│   │   └── config/        # Auth0 configuration
+├── server/                # Express backend
+│   ├── authRoutes.ts      # Authentication endpoints
+│   ├── authMiddleware.ts  # JWT verification
+│   └── storage.ts         # Database operations
+└── shared/                # Shared types and schemas
 ```
 
-### Doubt Solving (Express/Node, Python)
-```
-POST /api/solve-doubt
-{
-  "grade": "10",
-  "subject": "Science",
-  "topic": "Electricity",
-  "doubt": "What is Ohm's Law?"
-}
-```
-**Response:**
-```json
-{ "success": true, "answer": "...detailed explanation..." }
-```
-
----
-
-## 🛠️ Running Locally
-
-### 1. Clone & Install
+### Environment Variables
 ```bash
-git clone <repo-url>
-cd <repo>
-# Install Node/React deps
-cd client && npm install && cd ..
-# (Optional) Install Python deps in venv
-python3 -m venv deployment && source deployment/bin/activate
-pip install -r requirements.txt
+# Database
+DATABASE_URL=your-neon-postgres-url
+
+# Auth0 (optional - leave empty for development mode)
+AUTH0_DOMAIN=your-tenant.us.auth0.com
+AUTH0_AUDIENCE=your-api-identifier
+
+# Client Auth0 (optional)
+VITE_AUTH0_DOMAIN=your-tenant.us.auth0.com
+VITE_AUTH0_CLIENT_ID=your-client-id
+VITE_AUTH0_AUDIENCE=your-api-identifier
 ```
 
-### 2. Environment Variables
-Create a `.env` file in the root:
-```
-OPENAI_API_KEY=sk-...
-LANGSMITH_API_KEY=ls_...
-# (other keys as needed)
-```
+## 🎯 Features
 
-### 3. Start Backends
-- **FastAPI (AI endpoints):**
-```bash
-source deployment/bin/activate
-uvicorn fastapi_exam_api:app --reload --port 4444
-```
-- **Node/Express (legacy):**
-```bash
-cd server && npm install && npm run dev
-```
+### Student Dashboard
+- AI-powered tutoring and doubt resolution
+- Interactive practice playground
+- Progress tracking and analytics
+- Assignment and homework management
+- Study schedule and calendar
 
-### 4. Start Frontend
-```bash
-cd client
-npm run dev
-```
-Visit [http://localhost:5173](http://localhost:5173)
+### Teacher Dashboard
+- AI exam generation
+- Lesson planning and classroom management
+- Student analytics and performance tracking
+- Assignment interface
+- Attendance and scheduling
 
----
+### Parent Dashboard
+- Child's academic progress monitoring
+- Communication with teachers
+- Attendance tracking
+- Performance analytics
 
-## 🏗️ Deployment
-- Deploy FastAPI backend (e.g., on Render, Railway, or your own server)
-- Deploy Node backend if needed
-- Deploy React frontend (Vercel, Netlify, etc.)
-- Set environment variables in your deployment platform
-- Update frontend API URLs if deploying to production domains
+### Admin Dashboard
+- User management and system monitoring
+- Attendance and leave management
+- Fee collection and reporting
+- Communication center
+- AI analytics dashboard
 
----
+## 🔐 Security
+
+- **JWT Token Verification**: Full Auth0 integration in production
+- **Role-Based Access Control**: API endpoints protected by user roles
+- **Database Security**: Parameterized queries and proper data validation
+- **Environment Variables**: Sensitive data protected via environment configuration
+
+## 📖 Getting Started
+
+1. **Clone the repository**
+2. **Set up Auth0**: Follow `AUTH0_SETUP.md` to configure authentication
+3. **Install dependencies**: `npm install`
+4. **Start development**: `npm run dev`
+5. **Test the authentication**: Click Student or Teacher login buttons
+
+The application uses Auth0 for secure authentication with role-based access control.
 
 ## 🤝 Contributing
-Pull requests welcome! Please open issues for bugs, features, or questions.
 
-## 📄 License
-[MIT](LICENSE) (or your preferred license) 
+The authentication system is fully functional with Auth0 integration. The pilot dashboards remain unchanged as requested, and all new authentication features work seamlessly.
+
+For issues or feature requests, please create an issue in the repository. 

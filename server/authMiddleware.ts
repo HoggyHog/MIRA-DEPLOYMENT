@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import jwksClient from 'jwks-rsa';
 import { storage } from './storage';
 
 // Extend Request type to include auth property
@@ -15,7 +16,31 @@ declare global {
   }
 }
 
-// Simple JWT verification for development
+// JWKS client for Auth0 token verification
+const client = jwksClient({
+  jwksUri: `https://${process.env.AUTH0_DOMAIN || 'your-domain.auth0.com'}/.well-known/jwks.json`,
+  requestHeaders: {}, // Optional
+  timeout: 30000, // Defaults to 30s
+  cache: true, // Default value
+  rateLimit: true,
+  jwksRequestsPerMinute: 5, // Default value
+  cacheMaxEntries: 5, // Default value
+  cacheMaxAge: 600000, // Defaults to 10m
+});
+
+// Function to get signing key
+const getKey = (header: any, callback: any) => {
+  client.getSigningKey(header.kid, (err, key) => {
+    if (err) {
+      console.error('Error getting signing key:', err);
+      return callback(err);
+    }
+    const signingKey = key?.getPublicKey();
+    callback(null, signingKey);
+  });
+};
+
+// Verify Auth0 JWT token
 export const verifyToken = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const authHeader = req.headers.authorization;
@@ -25,20 +50,46 @@ export const verifyToken = async (req: Request, res: Response, next: NextFunctio
     }
     
     const token = authHeader.substring(7);
+    const audience = process.env.AUTH0_AUDIENCE || 'your-api-identifier';
+    const issuer = `https://${process.env.AUTH0_DOMAIN || 'your-domain.auth0.com'}/`;
     
-    // Decode JWT token without verification for development
-    const decoded = jwt.decode(token) as any;
-    
-    if (!decoded || !decoded.sub) {
-      return res.status(401).json({ error: 'Invalid token format' });
+    // For development, use simple decode without verification
+    if (process.env.NODE_ENV === 'development') {
+      const decoded = jwt.decode(token) as any;
+      
+      if (!decoded || !decoded.sub) {
+        return res.status(401).json({ error: 'Invalid token format' });
+      }
+      
+      req.auth = {
+        sub: decoded.sub
+      };
+      
+      return next();
     }
     
-    // Store decoded token info
-    req.auth = {
-      sub: decoded.sub
-    };
+    // For production, verify the token
+    jwt.verify(token, getKey, {
+      audience: audience,
+      issuer: issuer,
+      algorithms: ['RS256']
+    }, (err, decoded: any) => {
+      if (err) {
+        console.error('JWT verification error:', err);
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+      
+      if (!decoded || !decoded.sub) {
+        return res.status(401).json({ error: 'Invalid token format' });
+      }
+      
+      req.auth = {
+        sub: decoded.sub
+      };
+      
+      next();
+    });
     
-    next();
   } catch (error) {
     console.error('Token verification error:', error);
     res.status(401).json({ error: 'Invalid token' });
