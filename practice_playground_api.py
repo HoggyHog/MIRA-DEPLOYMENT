@@ -86,29 +86,64 @@ class PracticePlaygroundAnalyzer:
     """Main analyzer for comparing student responses with ideal answers"""
     
     def __init__(self):
-        self.system_prompt = """You are an expert educational assessment AI specializing in analyzing student responses against ideal answers or reference content. Your role is to provide detailed, constructive feedback that helps students improve their understanding.
+        self.system_prompt = """You are an expert CBSE (Central Board of Secondary Education) question-answer checker and educational assessment specialist. You have extensive experience in CBSE marking schemes, question patterns, and common student errors across all subjects and grade levels.
 
-For each question-answer pair, you must analyze:
-1. Marking scheme with specific point allocation
-2. Common misconceptions evident in the student's response
-3. Specific improvement suggestions
-4. Positive aspects (strengths) in the student's answer
+Your primary role is to:
+1. Conduct step-by-step comparison between student responses and ideal answers
+2. Identify ALL mistakes, errors, and concept gaps in student responses
+3. Provide detailed, constructive feedback following CBSE assessment guidelines
+4. Highlight both conceptual understanding and procedural errors
+5. Suggest specific remedial actions based on CBSE curriculum requirements
 
-Be precise, educational, and supportive in your feedback. Focus on learning outcomes rather than just correct/incorrect marking."""
+Key Assessment Criteria:
+- Follow CBSE marking scheme patterns (step-wise marking)
+- Identify conceptual gaps vs procedural errors
+- Note presentation issues (diagrams, units, significant figures)
+- Assess application of formulas, theorems, and concepts
+- Evaluate logical reasoning and analytical thinking
+- Check for completeness of answers as per CBSE standards
+
+Your analysis should be detailed, educational, and aligned with CBSE evaluation patterns to help students improve their academic performance."""
 
     def analyze_student_responses(self, ideal_content: str, student_responses: str) -> Dict:
         """Analyze student responses against ideal answers/content"""
         
         user_prompt = f"""
-Analyze the following student responses against the ideal answers/reference content:
+As an expert CBSE question-answer checker, analyze the following student responses against the ideal answers step by step:
 
-=== IDEAL ANSWERS/REFERENCE CONTENT ===
+=== IDEAL ANSWERS/REFERENCE CONTENT (CBSE PATTERN) ===
 {ideal_content}
 
 === STUDENT RESPONSES ===
 {student_responses}
 
-Please provide a comprehensive analysis in the following JSON format:
+CONDUCT DETAILED STEP-BY-STEP ANALYSIS:
+
+For each question, perform the following analysis:
+
+1. **STEP-BY-STEP COMPARISON:**
+   - Break down both ideal and student answers into logical steps
+   - Compare each step individually
+   - Note where the student went wrong in the solution process
+
+2. **MISTAKE IDENTIFICATION:**
+   - Conceptual errors (misunderstanding of fundamental concepts)
+   - Procedural errors (wrong method or formula application)
+   - Calculation mistakes (arithmetic errors)
+   - Presentation issues (missing units, diagrams, labels)
+   - Incomplete solutions (missing steps or conclusions)
+
+3. **CONCEPT GAP ANALYSIS:**
+   - Identify specific CBSE curriculum concepts not understood
+   - Note prerequisite knowledge gaps
+   - Highlight connections between concepts that are missing
+
+4. **CBSE MARKING SCHEME ALIGNMENT:**
+   - Apply CBSE-style step-wise marking
+   - Allocate marks for method, calculation, and conclusion
+   - Consider partial credit for correct approach despite errors
+
+Provide response in the following JSON format:
 
 {{
     "overall_score": <percentage_score>,
@@ -121,22 +156,58 @@ Please provide a comprehensive analysis in the following JSON format:
             "ideal_answer": "<expected_answer>",
             "marks_awarded": <marks_given>,
             "total_marks": <marks_possible>,
-            "marking_scheme": "<detailed_breakdown_of_marks>",
-            "misconceptions": ["<misconception1>", "<misconception2>"],
-            "improvement_suggestions": "<specific_actionable_advice>",
-            "strengths": ["<strength1>", "<strength2>"]
+            "marking_scheme": "<CBSE_style_step_wise_marking_breakdown>",
+            "step_by_step_comparison": [
+                {{
+                    "step": "<step_description>",
+                    "ideal_approach": "<what_should_be_done>",
+                    "student_approach": "<what_student_did>",
+                    "error_type": "<conceptual/procedural/calculation/presentation>",
+                    "marks_lost": <marks_deducted_for_this_step>
+                }}
+            ],
+            "mistakes_identified": [
+                {{
+                    "mistake": "<specific_mistake>",
+                    "category": "<conceptual/procedural/calculation/presentation>",
+                    "severity": "<high/medium/low>",
+                    "cbse_curriculum_topic": "<relevant_CBSE_topic>"
+                }}
+            ],
+            "concept_gaps": [
+                {{
+                    "concept": "<missing_concept>",
+                    "cbse_chapter": "<relevant_CBSE_chapter>",
+                    "prerequisite_knowledge": "<what_should_be_known_first>",
+                    "impact": "<how_this_gap_affects_understanding>"
+                }}
+            ],
+            "improvement_suggestions": "<specific_actionable_advice_with_CBSE_resources>",
+            "strengths": ["<positive_aspects_in_student_response>"],
+            "remedial_actions": [
+                "<specific_CBSE_textbook_references>",
+                "<practice_problem_types>",
+                "<concept_revision_needed>"
+            ]
         }}
     ],
-    "general_feedback": "<overall_performance_summary_and_study_recommendations>"
+    "general_feedback": "<overall_performance_summary_with_CBSE_preparation_strategy>",
+    "cbse_exam_readiness": {{
+        "current_level": "<below_average/average/above_average>",
+        "key_areas_to_focus": ["<area1>", "<area2>"],
+        "expected_improvement_timeline": "<realistic_timeframe>",
+        "cbse_specific_tips": ["<tip1>", "<tip2>"]
+    }}
 }}
 
-IMPORTANT GUIDELINES:
-- Be specific about marking criteria (e.g., "2 marks for correct formula, 2 marks for calculation, 1 mark for units")
-- Identify specific misconceptions (e.g., "Confused velocity with acceleration", "Misunderstood the concept of photosynthesis")
-- Give actionable improvement suggestions (e.g., "Review the difference between speed and velocity", "Practice more problems on chemical bonding")
-- Highlight positive aspects to encourage learning
-- Ensure marking is fair and educational
-- If questions are not clearly separated, try to identify individual responses and analyze them separately
+IMPORTANT CBSE-SPECIFIC GUIDELINES:
+- Use CBSE marking scheme patterns (usually 1 mark for method, 1 mark for calculation, 1 mark for answer/conclusion)
+- Identify common CBSE question types (Very Short Answer, Short Answer, Long Answer)
+- Note CBSE-specific requirements (diagram labeling, unit specification, significant figures)
+- Reference specific CBSE textbook chapters and concepts
+- Provide improvement suggestions aligned with CBSE curriculum and exam patterns
+- Consider CBSE evaluation criteria for different subjects
+- Focus on both understanding and application as per CBSE standards
 """
 
         messages = [
@@ -229,6 +300,20 @@ async def analyze_practice_session(
         # Parse analysis results
         question_analyses = []
         for qa in analysis_result.get("question_analyses", []):
+            # Extract misconceptions from the new mistakes_identified format
+            misconceptions = []
+            mistakes_identified = qa.get("mistakes_identified", [])
+            if mistakes_identified:
+                for mistake in mistakes_identified:
+                    if isinstance(mistake, dict):
+                        misconceptions.append(mistake.get("mistake", ""))
+                    else:
+                        misconceptions.append(str(mistake))
+            
+            # Fallback to old format if new format not present
+            if not misconceptions:
+                misconceptions = qa.get("misconceptions", [])
+            
             question_analyses.append(QuestionAnalysis(
                 question_number=qa.get("question_number", 0),
                 question_text=qa.get("question_text", ""),
@@ -237,7 +322,7 @@ async def analyze_practice_session(
                 marks_awarded=qa.get("marks_awarded", 0),
                 total_marks=qa.get("total_marks", 0),
                 marking_scheme=qa.get("marking_scheme", ""),
-                misconceptions=qa.get("misconceptions", []),
+                misconceptions=misconceptions,
                 improvement_suggestions=qa.get("improvement_suggestions", ""),
                 strengths=qa.get("strengths", [])
             ))
