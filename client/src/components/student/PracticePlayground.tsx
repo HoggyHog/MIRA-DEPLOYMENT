@@ -21,7 +21,12 @@ import {
   BookOpen,
   Lightbulb,
   Loader2,
-  Download
+  Download,
+  Camera,
+  Image,
+  Eye,
+  X,
+  Plus
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -38,6 +43,14 @@ interface QuestionAnalysis {
   strengths: string[];
 }
 
+interface OCRResult {
+  text: string;
+  confidence?: number;
+  processing_time?: number;
+  file_type: string;
+  file_name: string;
+}
+
 interface PracticeAnalysis {
   success: boolean;
   overall_score?: number;
@@ -45,6 +58,7 @@ interface PracticeAnalysis {
   question_analyses?: QuestionAnalysis[];
   general_feedback?: string;
   error?: string;
+  ocr_results?: { [key: string]: OCRResult };
 }
 
 const PracticePlayground = () => {
@@ -55,18 +69,79 @@ const PracticePlayground = () => {
   });
   const [idealContentFile, setIdealContentFile] = useState<File | null>(null);
   const [studentResponsesFile, setStudentResponsesFile] = useState<File | null>(null);
+  const [studentResponsesImages, setStudentResponsesImages] = useState<File[]>([]);
   const [analysis, setAnalysis] = useState<PracticeAnalysis | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [uploadMode, setUploadMode] = useState<'single' | 'multi'>('single');
+  const [ocrPreview, setOcrPreview] = useState<{ [key: string]: string }>({});
+  const [isPreviewingOCR, setIsPreviewingOCR] = useState(false);
   const { toast } = useToast();
 
   const subjects = ["Mathematics", "Science", "English", "Social Studies", "Hindi", "Physics", "Chemistry", "Biology"];
   const grades = ["6", "7", "8", "9", "10", "11", "12"];
 
+  const SUPPORTED_FILE_TYPES = {
+    pdf: 'application/pdf',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    bmp: 'image/bmp',
+    tiff: 'image/tiff',
+    webp: 'image/webp'
+  };
+
+  const isImageFile = (file: File): boolean => {
+    return file.type.startsWith('image/');
+  };
+
+  const isValidFileType = (file: File): boolean => {
+    return Object.values(SUPPORTED_FILE_TYPES).includes(file.type);
+  };
+
+  const previewOCR = async (file: File) => {
+    if (!isImageFile(file)) return;
+
+    setIsPreviewingOCR(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('http://localhost:8003/ocr-preview', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('OCR preview failed');
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        setOcrPreview(prev => ({ ...prev, [file.name]: result.extracted_text }));
+        toast({
+          title: "OCR Preview Ready",
+          description: `Extracted ${result.character_count} characters from ${file.name}`,
+        });
+      } else {
+        throw new Error(result.error || 'OCR preview failed');
+      }
+    } catch (error) {
+      console.error('OCR preview error:', error);
+      toast({
+        title: "OCR Preview Failed",
+        description: "Failed to extract text from image. The file will still be processed during analysis.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsPreviewingOCR(false);
+    }
+  };
+
   const handleFileUpload = (file: File, type: 'ideal' | 'student') => {
-    if (file.type !== 'application/pdf') {
+    if (!isValidFileType(file)) {
       toast({
         title: "Invalid File Type",
-        description: "Please upload only PDF files.",
+        description: "Please upload PDF or image files (JPEG, PNG, BMP, TIFF, WebP).",
         variant: "destructive"
       });
       return;
@@ -88,17 +163,79 @@ const PracticePlayground = () => {
       setStudentResponsesFile(file);
     }
 
+    // Preview OCR for images
+    if (isImageFile(file)) {
+      previewOCR(file);
+    }
+
     toast({
       title: "File Uploaded",
       description: `${file.name} uploaded successfully.`,
     });
   };
 
+  const handleMultiImageUpload = (files: FileList) => {
+    const validFiles: File[] = [];
+    const invalidFiles: string[] = [];
+
+    Array.from(files).forEach(file => {
+      if (!isImageFile(file)) {
+        invalidFiles.push(file.name);
+      } else if (file.size > 10 * 1024 * 1024) {
+        invalidFiles.push(`${file.name} (too large)`);
+      } else {
+        validFiles.push(file);
+      }
+    });
+
+    if (invalidFiles.length > 0) {
+      toast({
+        title: "Some files skipped",
+        description: `Invalid files: ${invalidFiles.join(', ')}`,
+        variant: "destructive"
+      });
+    }
+
+    if (validFiles.length > 0) {
+      setStudentResponsesImages(prev => [...prev, ...validFiles]);
+      
+      // Preview OCR for all images
+      validFiles.forEach(file => previewOCR(file));
+
+      toast({
+        title: "Images Uploaded",
+        description: `${validFiles.length} image(s) uploaded successfully.`,
+      });
+    }
+  };
+
+  const removeImage = (index: number) => {
+    setStudentResponsesImages(prev => prev.filter((_, i) => i !== index));
+  };
+
   const analyzeResponses = async () => {
-    if (!idealContentFile || !studentResponsesFile) {
+    if (!idealContentFile) {
       toast({
         title: "Missing Files",
-        description: "Please upload both ideal content and student responses PDFs.",
+        description: "Please upload ideal content file.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (uploadMode === 'single' && !studentResponsesFile) {
+      toast({
+        title: "Missing Files",
+        description: "Please upload student responses file.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (uploadMode === 'multi' && studentResponsesImages.length === 0) {
+      toast({
+        title: "Missing Files",
+        description: "Please upload student response images.",
         variant: "destructive"
       });
       return;
@@ -117,13 +254,24 @@ const PracticePlayground = () => {
 
     try {
       const formData = new FormData();
-      formData.append('ideal_content_pdf', idealContentFile);
-      formData.append('student_responses_pdf', studentResponsesFile);
+      formData.append('ideal_content_file', idealContentFile);
       formData.append('subject', config.subject);
       formData.append('grade', config.grade);
       formData.append('topic', config.topic);
 
-      const response = await fetch('/api/analyze-practice', {
+      let endpoint = 'http://localhost:8003/analyze-practice';
+
+      if (uploadMode === 'single') {
+        formData.append('student_responses_file', studentResponsesFile!);
+      } else {
+        // Multi-image mode
+        studentResponsesImages.forEach(image => {
+          formData.append('student_responses_images', image);
+        });
+        endpoint = 'http://localhost:8003/analyze-practice-multi-image';
+      }
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         body: formData,
       });
@@ -196,9 +344,14 @@ const PracticePlayground = () => {
           <CardTitle className="flex items-center gap-2">
             <PlayCircle className="w-6 h-6 text-blue-600" />
             AI Practice Playground
+            <Badge variant="secondary" className="ml-2">
+              <Camera className="w-3 h-3 mr-1" />
+              OCR Enabled
+            </Badge>
           </CardTitle>
           <CardDescription>
-            Upload your practice responses and ideal answers to get detailed feedback with marking schemes and improvement suggestions.
+            Upload your practice responses (PDF or images) and ideal answers to get detailed CBSE-style feedback with marking schemes and improvement suggestions. 
+            Now supports handwritten responses with advanced OCR technology!
           </CardDescription>
         </CardHeader>
       </Card>
@@ -257,26 +410,65 @@ const PracticePlayground = () => {
               </div>
 
               {/* File Uploads */}
+              <div className="space-y-6">
+                {/* Upload Mode Selection */}
+                <div className="space-y-3">
+                  <Label>Upload Mode</Label>
+                  <div className="flex gap-4">
+                    <Button
+                      variant={uploadMode === 'single' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setUploadMode('single')}
+                    >
+                      <FileText className="w-4 h-4 mr-2" />
+                      Single File
+                    </Button>
+                    <Button
+                      variant={uploadMode === 'multi' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setUploadMode('multi')}
+                    >
+                      <Image className="w-4 h-4 mr-2" />
+                      Multiple Images
+                    </Button>
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    {uploadMode === 'single' 
+                      ? 'Upload a single PDF or image file for student responses'
+                      : 'Upload multiple images for multi-page handwritten responses'
+                    }
+                  </p>
+                </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Ideal Content Upload */}
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label>Ideal Answers/Reference Content *</Label>
-                    <p className="text-sm text-gray-600">Upload PDF containing ideal answers (Demo: text-based PDFs work best)</p>
+                      <p className="text-sm text-gray-600">
+                        Upload PDF or image file containing ideal answers/reference content
+                      </p>
                   </div>
                   <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                    <FileText className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                      <div className="flex justify-center mb-4">
+                        {idealContentFile && isImageFile(idealContentFile) ? (
+                          <Camera className="h-12 w-12 text-blue-400" />
+                        ) : (
+                          <FileText className="h-12 w-12 text-gray-400" />
+                        )}
+                      </div>
                     <div className="space-y-2">
                       <Button
                         variant="outline"
                         onClick={() => document.getElementById('ideal-content-upload')?.click()}
                       >
                         <Upload className="w-4 h-4 mr-2" />
-                        Upload Ideal Content PDF
+                          Upload Ideal Content
                       </Button>
                       <input
                         id="ideal-content-upload"
                         type="file"
-                        accept=".pdf"
+                          accept=".pdf,.jpg,.jpeg,.png,.bmp,.tiff,.webp"
                         className="hidden"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
@@ -284,33 +476,65 @@ const PracticePlayground = () => {
                         }}
                       />
                       {idealContentFile && (
+                          <div className="space-y-2">
                         <div className="text-sm text-green-600 font-medium">
                           ✓ {idealContentFile.name}
+                            </div>
+                            {isImageFile(idealContentFile) && ocrPreview[idealContentFile.name] && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  const preview = ocrPreview[idealContentFile.name];
+                                  toast({
+                                    title: "OCR Preview",
+                                    description: preview.slice(0, 200) + (preview.length > 200 ? '...' : ''),
+                                  });
+                                }}
+                              >
+                                <Eye className="w-4 h-4 mr-2" />
+                                Preview OCR
+                              </Button>
+                            )}
                         </div>
                       )}
                     </div>
                   </div>
                 </div>
 
+                  {/* Student Responses Upload */}
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label>Student Responses *</Label>
-                    <p className="text-sm text-gray-600">Upload PDF containing your practice responses (Demo: text-based PDFs work best)</p>
+                      <p className="text-sm text-gray-600">
+                        {uploadMode === 'single' 
+                          ? 'Upload PDF or image file containing your practice responses'
+                          : 'Upload multiple images of your handwritten responses'
+                        }
+                      </p>
                   </div>
+                    
+                    {uploadMode === 'single' ? (
                   <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                    <FileText className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                        <div className="flex justify-center mb-4">
+                          {studentResponsesFile && isImageFile(studentResponsesFile) ? (
+                            <Camera className="h-12 w-12 text-blue-400" />
+                          ) : (
+                            <FileText className="h-12 w-12 text-gray-400" />
+                          )}
+                        </div>
                     <div className="space-y-2">
                       <Button
                         variant="outline"
                         onClick={() => document.getElementById('student-responses-upload')?.click()}
                       >
                         <Upload className="w-4 h-4 mr-2" />
-                        Upload Your Responses PDF
+                            Upload Your Responses
                       </Button>
                       <input
                         id="student-responses-upload"
                         type="file"
-                        accept=".pdf"
+                            accept=".pdf,.jpg,.jpeg,.png,.bmp,.tiff,.webp"
                         className="hidden"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
@@ -318,20 +542,127 @@ const PracticePlayground = () => {
                         }}
                       />
                       {studentResponsesFile && (
+                            <div className="space-y-2">
                         <div className="text-sm text-green-600 font-medium">
                           ✓ {studentResponsesFile.name}
+                              </div>
+                              {isImageFile(studentResponsesFile) && ocrPreview[studentResponsesFile.name] && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    const preview = ocrPreview[studentResponsesFile.name];
+                                    toast({
+                                      title: "OCR Preview",
+                                      description: preview.slice(0, 200) + (preview.length > 200 ? '...' : ''),
+                                    });
+                                  }}
+                                >
+                                  <Eye className="w-4 h-4 mr-2" />
+                                  Preview OCR
+                                </Button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                          <Image className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                          <div className="space-y-2">
+                            <Button
+                              variant="outline"
+                              onClick={() => document.getElementById('multi-image-upload')?.click()}
+                            >
+                              <Plus className="w-4 h-4 mr-2" />
+                              Add Images
+                            </Button>
+                            <input
+                              id="multi-image-upload"
+                              type="file"
+                              accept=".jpg,.jpeg,.png,.bmp,.tiff,.webp"
+                              multiple
+                              className="hidden"
+                              onChange={(e) => {
+                                const files = e.target.files;
+                                if (files) handleMultiImageUpload(files);
+                              }}
+                            />
+                            <p className="text-xs text-gray-500">
+                              Click to add multiple images (JPEG, PNG, BMP, TIFF, WebP)
+                            </p>
+                          </div>
+                        </div>
+                        
+                        {studentResponsesImages.length > 0 && (
+                          <div className="space-y-2">
+                            <Label>Uploaded Images ({studentResponsesImages.length})</Label>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {studentResponsesImages.map((image, index) => (
+                                <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                                  <div className="flex items-center gap-2">
+                                    <Image className="w-4 h-4 text-blue-500" />
+                                    <span className="text-sm truncate">{image.name}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    {ocrPreview[image.name] && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                          const preview = ocrPreview[image.name];
+                                          toast({
+                                            title: `OCR Preview - ${image.name}`,
+                                            description: preview.slice(0, 200) + (preview.length > 200 ? '...' : ''),
+                                          });
+                                        }}
+                                      >
+                                        <Eye className="w-3 h-3" />
+                                      </Button>
+                                    )}
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => removeImage(index)}
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                         </div>
                       )}
                     </div>
+                    )}
                   </div>
                 </div>
+
+                {/* OCR Status */}
+                {isPreviewingOCR && (
+                  <Alert>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <AlertDescription>
+                      Processing image with OCR... This may take a few moments.
+                    </AlertDescription>
+                  </Alert>
+                )}
               </div>
 
               {/* Analyze Button */}
               <div className="flex justify-center pt-4">
                 <Button 
                   onClick={analyzeResponses}
-                  disabled={isAnalyzing || !idealContentFile || !studentResponsesFile || !config.subject || !config.grade || !config.topic}
+                  disabled={
+                    isAnalyzing || 
+                    !idealContentFile || 
+                    (uploadMode === 'single' && !studentResponsesFile) ||
+                    (uploadMode === 'multi' && studentResponsesImages.length === 0) ||
+                    !config.subject || 
+                    !config.grade || 
+                    !config.topic
+                  }
                   className="min-w-[200px]"
                   size="lg"
                 >
@@ -405,6 +736,53 @@ const PracticePlayground = () => {
                   )}
                 </CardContent>
               </Card>
+
+              {/* OCR Results */}
+              {analysis.ocr_results && Object.keys(analysis.ocr_results).length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Camera className="w-6 h-6 text-blue-600" />
+                      OCR Processing Results
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {Object.entries(analysis.ocr_results).map(([key, ocrResult]) => (
+                      <div key={key} className="p-4 bg-gray-50 rounded-lg">
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-semibold text-gray-700 capitalize">{key.replace('_', ' ')}</h4>
+                          <Badge variant="outline">
+                            {ocrResult.file_type === 'multi_image' ? 'Multiple Images' : ocrResult.file_type.toUpperCase()}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-2">
+                          <strong>File:</strong> {ocrResult.file_name}
+                        </p>
+                        <div className="border rounded p-3 bg-white">
+                          <ScrollArea className="h-32">
+                            <p className="text-sm whitespace-pre-wrap">
+                              {ocrResult.text || 'No text extracted'}
+                            </p>
+                          </ScrollArea>
+                        </div>
+                        <div className="flex justify-between items-center mt-2 text-xs text-gray-500">
+                          <span>Characters extracted: {ocrResult.text?.length || 0}</span>
+                          {ocrResult.processing_time && (
+                            <span>Processing time: {ocrResult.processing_time}s</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    <Alert>
+                      <Eye className="h-4 w-4" />
+                      <AlertDescription>
+                        The text above was automatically extracted from your uploaded images using OCR technology. 
+                        This extracted text was used for analysis.
+                      </AlertDescription>
+                    </Alert>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Question-by-Question Analysis */}
               <div className="space-y-4">
