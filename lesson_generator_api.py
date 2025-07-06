@@ -14,10 +14,16 @@ from final_agentic_m4_RAG_logic import OrchestratorAgent
 
 app = FastAPI(title="Lesson Generator API", version="1.0.0")
 
-# Add CORS middleware
+# Add CORS middleware with Replit support
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:3000", 
+        "http://localhost:5173",
+        "https://*.replit.dev",
+        "https://*.replit.co",
+        "https://*.replit.app"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -38,6 +44,10 @@ class LessonResponse(BaseModel):
 @app.get("/")
 async def root():
     return {"message": "Lesson Generator API is running", "status": "healthy"}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "lesson-generator"}
 
 @app.post("/api/generate-lesson", response_model=LessonResponse)
 async def generate_lesson(

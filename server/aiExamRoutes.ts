@@ -38,7 +38,7 @@ export const generateExamPaper = async (req: Request, res: Response) => {
     };
 
     // Use QPA_2.py for comprehensive exam generation with LangSmith tracing
-    const pythonProcess = spawn('python3', ['-c', `
+    const pythonProcess = spawn('./venv/bin/python', ['-c', `
 import sys
 import json
 from QPA_2 import generate_cbse_exam_paper

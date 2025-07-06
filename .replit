@@ -1,0 +1,32 @@
+run = "bash replit_python_only.sh"
+entrypoint = "lesson_generator_api.py"
+
+[nix]
+channel = "stable-23_11"
+
+[env]
+PYTHONPATH = "${PYTHONPATH}:${REPL_HOME}"
+
+[packager]
+language = "python"
+
+[packager.features]
+packageSearch = true
+guessImports = true
+
+[languages]
+[languages.javascript]
+pattern = "**/*.js"
+syntax = "javascript"
+
+[languages.typescript]
+pattern = "**/*.ts"
+syntax = "typescript"
+
+[languages.python]
+pattern = "**/*.py"
+syntax = "python"
+
+[deployment]
+run = ["bash", "replit_python_only.sh"]
+deploymentTarget = "cloudrun" 
