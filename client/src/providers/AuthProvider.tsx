@@ -60,7 +60,13 @@ const Auth0AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     if (!isAuthenticated || !user) return null;
 
     try {
-      const token = await getAccessTokenSilently();
+      // Always request a token for our API audience so that Auth0 issues a proper Access Token
+      const token = await getAccessTokenSilently({
+        authorizationParams: {
+          audience: auth0Config.audience,
+          scope: auth0Config.scope,
+        },
+      });
       const url = roleParam ? `/api/auth/profile?role=${roleParam}` : '/api/auth/profile';
       
       const response = await fetch(url, {
@@ -87,9 +93,10 @@ const Auth0AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   useEffect(() => {
     if (isAuthenticated && user && !userProfile && !isLoadingProfile) {
       setIsLoadingProfile(true);
-      fetchUserProfile()
+      fetchUserProfile(sessionStorage.getItem('requestedRole') || undefined)
         .then((profile) => {
           setUserProfile(profile);
+          sessionStorage.removeItem('requestedRole');
           
           // Redirect based on role after successful login
           if (profile?.user?.role) {
@@ -114,7 +121,11 @@ const Auth0AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     }
   }, [isAuthenticated, user, userProfile, isLoadingProfile, setLocation]);
 
+  // Store chosen role so we can send it after redirect
   const login = (role?: string) => {
+    if (role) {
+      sessionStorage.setItem('requestedRole', role);
+    }
     const appState = role ? { role } : undefined;
     loginWithRedirect({
       appState,
@@ -135,9 +146,29 @@ const Auth0AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
   const getAccessToken = async (): Promise<string> => {
     try {
-      return await getAccessTokenSilently();
+      return await getAccessTokenSilently({
+        authorizationParams: {
+          audience: auth0Config.audience,
+          scope: auth0Config.scope,
+        },
+      });
     } catch (error) {
-      console.error('Error getting access token:', error);
+      if ((error as any)?.error === 'login_required') {
+        // Session has expired or user cleared cookies – force interactive login once
+        try {
+          await loginWithRedirect({
+            authorizationParams: {
+              audience: auth0Config.audience,
+              scope: auth0Config.scope,
+              redirect_uri: window.location.origin,
+            },
+          });
+        } catch (e) {
+          console.error('Redirect login also failed:', e);
+        }
+      } else {
+        console.error('Error getting access token:', error);
+      }
       return '';
     }
   };
@@ -146,8 +177,9 @@ const Auth0AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     if (isAuthenticated && user) {
       setIsLoadingProfile(true);
       try {
-        const profile = await fetchUserProfile();
+        const profile = await fetchUserProfile(sessionStorage.getItem('requestedRole') || undefined);
         setUserProfile(profile);
+          sessionStorage.removeItem('requestedRole');
       } catch (error) {
         console.error('Error refreshing profile:', error);
       } finally {
@@ -178,6 +210,8 @@ const Auth0AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
     <Auth0Provider
+      cacheLocation="localstorage"
+      useRefreshTokens={true}
       domain={auth0Config.domain}
       clientId={auth0Config.clientId}
       authorizationParams={{
