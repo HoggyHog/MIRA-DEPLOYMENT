@@ -22,7 +22,7 @@ import uuid
 os.environ.setdefault("LANGSMITH_TRACING", "true")
 os.environ.setdefault("LANGSMITH_PROJECT", "Mira-Exam-Generation")
 os.environ.setdefault("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
-os.environ.setdefault("LANGSMITH_API_KEY", "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")
+os.environ.setdefault("LANGSMITH_API_KEY", "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")
 
 langsmith_client = Client()
 # LangSmith API key will be set from environment

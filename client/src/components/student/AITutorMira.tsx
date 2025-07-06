@@ -32,6 +32,10 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import 'katex/dist/katex.min.css';
 import { InlineMath, BlockMath } from 'react-katex';
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 
 interface Content {
   id: string;
@@ -39,6 +43,7 @@ interface Content {
   type: 'pdf' | 'youtube' | 'slides' | 'text';
   uploadDate: Date;
   summary?: string;
+  file?: File;
 }
 
 interface ChatMessage {
@@ -113,7 +118,14 @@ const AITutorMira = () => {
         summary: `Processed PDF content: ${file.name}. Ready for AI analysis and personalized learning.`
       };
 
-      setUploadedContent(prev => [...prev, newContent]);
+      setUploadedContent(prev => [...prev, {
+        id: Date.now().toString(),
+        title: file.name.replace('.pdf', ''),
+        type: 'pdf',
+        uploadDate: new Date(),
+        file: file, // <-- store the actual file!
+        summary: `Processed PDF content: ${file.name}. Ready for AI analysis and personalized learning.`
+      }]);
       
       toast({
         title: "Content Uploaded",
@@ -418,11 +430,12 @@ const AITutorMira = () => {
     setIsSummarizing(prev => ({ ...prev, [content.id]: true }));
     try {
       let summary = '';
-      if (content.type === 'pdf') {
+      if (content.type === 'pdf' && content.file) {
         // Fetch the file from the uploaded content (simulate, or use a real file if available)
         // For demo, just send the title as the file name
         const formData = new FormData();
-        formData.append('file', new Blob([content.title], { type: 'application/pdf' }), content.title + '.pdf');
+        //formData.append('file', new Blob([content.title], { type: 'application/pdf' }), content.title + '.pdf');
+        formData.append('file', content.file);
         const response = await fetch('http://localhost:4444/api/summarize-content', {
           method: 'POST',
           body: formData,
@@ -618,9 +631,30 @@ const AITutorMira = () => {
                               {isSummarizing[content.id] ? 'Summarizing...' : 'Summarize Content'}
                             </Button>
                             {summaries[content.id] && (
-                              <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-gray-800">
-                                <strong>Summary:</strong> {summaries[content.id]}
-                              </div>
+
+                              <ReactMarkdown
+                              children={summaries[content.id]}
+                              remarkPlugins={[remarkMath]}
+                              rehypePlugins={[rehypeKatex]}
+                              components={{
+                                p: ({ children }) => (
+                                  <p className="mb-2 text-sm leading-relaxed prose prose-sm max-w-none">
+                                    {children}
+                                  </p>
+                                ),
+                                h3: ({ children }) => <h3 className="text-lg font-bold mt-6 mb-2">{children}</h3>,
+                                h4: ({ children }) => <h4 className="text-base font-semibold mt-4 mb-1">{children}</h4>,
+                                ul: ({ children }) => <ul className="list-disc pl-5 mb-2">{children}</ul>,
+                                li: ({ children }) => <li className="mb-1">{children}</li>,
+                                strong: ({ children }) => <strong className="font-semibold text-gray-800">{children}</strong>,
+                                code: ({ children }) => (
+                                  <code className="bg-gray-100 px-1 py-0.5 rounded text-xs font-mono text-purple-600">
+                                    {children}
+                                  </code>
+                                ),
+                              }}
+                              />
+                            
                             )}
                           </div>
                         </div>
