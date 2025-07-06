@@ -3,7 +3,12 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { generateExamPaper, getConfigOptions } from "./aiExamRoutes";
 import { generateLesson, getLessonConfigOptions } from "./lessonRoutes";
-import { analyzePracticeSession, getPracticeConfigOptions } from "./practicePlaygroundRoutes";
+import { 
+  analyzePracticeSession, 
+  analyzePracticeMultiImage, 
+  previewOCR, 
+  getPracticeConfigOptions 
+} from "./practicePlaygroundRoutes";
 import { teachContent, generateExam, chatWithTutor } from "./aiTutorRoutes";
 import doubtRoutes from "./doubtRoutes";
 import authRoutes from "./authRoutes";
@@ -27,6 +32,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Student-only routes  
   app.post('/api/protected/analyze-practice', requireStudent, analyzePracticeSession);
+  app.post('/api/protected/analyze-practice-multi-image', requireStudent, analyzePracticeMultiImage);
+  app.post('/api/protected/ocr-preview', requireStudent, previewOCR);
 
   // Routes accessible by both students and teachers
   app.use('/api/protected', requireAuth, doubtRoutes);
@@ -39,6 +46,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/generate-lesson', generateLesson);
   app.use('/api', doubtRoutes);
   app.post('/api/analyze-practice', analyzePracticeSession);
+  app.post('/api/analyze-practice-multi-image', analyzePracticeMultiImage);
+  app.post('/api/ocr-preview', previewOCR);
   app.post('/api/ai-tutor/teach', teachContent);
   app.post('/api/ai-tutor/generate-exam', generateExam);
   app.post('/api/ai-tutor/chat', chatWithTutor);

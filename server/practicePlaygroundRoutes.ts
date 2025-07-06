@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
+import fetch from 'node-fetch';
+import FormData from 'form-data';
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -21,6 +23,14 @@ interface QuestionAnalysis {
   strengths: string[];
 }
 
+interface OCRResult {
+  text: string;
+  confidence?: number;
+  processing_time?: number;
+  file_type: string;
+  file_name: string;
+}
+
 interface PracticeAnalysisResponse {
   success: boolean;
   overall_score?: number;
@@ -28,8 +38,362 @@ interface PracticeAnalysisResponse {
   question_analyses?: QuestionAnalysis[];
   general_feedback?: string;
   error?: string;
+  ocr_results?: { [key: string]: OCRResult };
 }
 
+// Check if FastAPI OCR service is available
+const checkOCRServiceAvailability = async (): Promise<boolean> => {
+  try {
+    const response = await fetch('http://localhost:8003/health', { 
+      method: 'GET',
+      timeout: 5000 
+    });
+    return response.ok;
+  } catch (error) {
+    console.warn('FastAPI OCR service not available, falling back to text-only processing');
+    return false;
+  }
+};
+
+// Proxy function to forward requests to FastAPI OCR service
+const forwardToOCRService = async (req: Request, endpoint: string): Promise<Response | null> => {
+  try {
+    const isOCRAvailable = await checkOCRServiceAvailability();
+    if (!isOCRAvailable) {
+      return null; // Fallback to legacy processing
+    }
+
+    const formData = new FormData();
+    
+    // Add form fields
+    if (req.body.subject) formData.append('subject', req.body.subject);
+    if (req.body.grade) formData.append('grade', req.body.grade);
+    if (req.body.topic) formData.append('topic', req.body.topic);
+
+    // Add files
+    const files = req.files as any;
+    if (files) {
+      if (files.ideal_content_file) {
+        const fileBuffer = files.ideal_content_file.tempFilePath 
+          ? fs.readFileSync(files.ideal_content_file.tempFilePath)
+          : Buffer.from(files.ideal_content_file.data);
+        
+        formData.append('ideal_content_file', fileBuffer, {
+          filename: files.ideal_content_file.name,
+          contentType: files.ideal_content_file.mimetype
+        });
+      }
+
+      if (files.student_responses_file) {
+        const fileBuffer = files.student_responses_file.tempFilePath 
+          ? fs.readFileSync(files.student_responses_file.tempFilePath)
+          : Buffer.from(files.student_responses_file.data);
+        
+        formData.append('student_responses_file', fileBuffer, {
+          filename: files.student_responses_file.name,
+          contentType: files.student_responses_file.mimetype
+        });
+      }
+
+      if (files.student_responses_images) {
+        const images = Array.isArray(files.student_responses_images) 
+          ? files.student_responses_images 
+          : [files.student_responses_images];
+        
+        images.forEach(image => {
+          const fileBuffer = image.tempFilePath 
+            ? fs.readFileSync(image.tempFilePath)
+            : Buffer.from(image.data);
+          
+          formData.append('student_responses_images', fileBuffer, {
+            filename: image.name,
+            contentType: image.mimetype
+          });
+        });
+      }
+    }
+
+    const response = await fetch(`http://localhost:8003${endpoint}`, {
+      method: 'POST',
+      body: formData,
+      timeout: 30000 // 30 second timeout for OCR processing
+    });
+
+    if (!response.ok) {
+      console.error(`FastAPI service error: ${response.status}`);
+      return null; // Fallback to legacy processing
+    }
+
+    const result = await response.json();
+    
+    // Clean up temp files
+    if (files) {
+      Object.values(files).flat().forEach((file: any) => {
+        if (file.tempFilePath && fs.existsSync(file.tempFilePath)) {
+          fs.unlinkSync(file.tempFilePath);
+        }
+      });
+    }
+
+    return result;
+
+  } catch (error) {
+    console.error('Error forwarding to OCR service:', error);
+    return null; // Fallback to legacy processing
+  }
+};
+
+// OCR Preview endpoint
+export const previewOCR = async (req: Request, res: Response) => {
+  try {
+    const files = req.files as any;
+    
+    if (!files?.file) {
+      return res.status(400).json({
+        success: false,
+        error: "File is required for OCR preview"
+      });
+    }
+
+    const file = files.file;
+    
+    // Check if it's an image file
+    if (!file.mimetype.startsWith('image/')) {
+      return res.status(400).json({
+        success: false,
+        error: "OCR preview is only available for image files"
+      });
+    }
+
+    // Try FastAPI OCR service first
+    try {
+      const formData = new FormData();
+      const fileBuffer = file.tempFilePath 
+        ? fs.readFileSync(file.tempFilePath)
+        : Buffer.from(file.data);
+      
+      formData.append('file', fileBuffer, {
+        filename: file.name,
+        contentType: file.mimetype
+      });
+
+      const response = await fetch('http://localhost:8003/ocr-preview', {
+        method: 'POST',
+        body: formData,
+        timeout: 15000
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        
+        // Clean up temp file
+        if (file.tempFilePath && fs.existsSync(file.tempFilePath)) {
+          fs.unlinkSync(file.tempFilePath);
+        }
+
+        return res.json(result);
+      }
+    } catch (error) {
+      console.error('FastAPI OCR preview failed:', error);
+    }
+
+    // Fallback response
+    res.json({
+      success: true,
+      extracted_text: "OCR service temporarily unavailable. The image will be processed during full analysis.",
+      file_name: file.name,
+      file_type: file.mimetype.split('/')[1],
+      character_count: 0,
+      word_count: 0
+    });
+
+    // Clean up temp file
+    if (file.tempFilePath && fs.existsSync(file.tempFilePath)) {
+      fs.unlinkSync(file.tempFilePath);
+    }
+
+  } catch (error) {
+    console.error('OCR preview error:', error);
+    res.status(500).json({
+      success: false,
+      error: "OCR preview failed"
+    });
+  }
+};
+
+// Enhanced analyze practice session with OCR support
+export const analyzePracticeSession = async (req: Request, res: Response) => {
+  try {
+    const { subject, grade, topic } = req.body;
+    const files = req.files as any;
+
+    // Check for required fields
+    if (!subject || !grade || !topic) {
+      return res.status(400).json({
+        success: false,
+        error: "Subject, grade, and topic are required"
+      });
+    }
+
+    // Check for required files
+    if (!files?.ideal_content_file) {
+      return res.status(400).json({
+        success: false,
+        error: "Ideal content file is required"
+      });
+    }
+
+    if (!files?.student_responses_file) {
+      return res.status(400).json({
+        success: false,
+        error: "Student responses file is required"
+      });
+    }
+
+    // Try to forward to FastAPI OCR service
+    const ocrResult = await forwardToOCRService(req, '/analyze-practice');
+    if (ocrResult) {
+      return res.json(ocrResult);
+    }
+
+    // Fallback to legacy processing for PDF-only files
+    console.log('Using legacy PDF processing...');
+    
+    // Extract text from uploaded PDFs (legacy method)
+    let idealContent: string;
+    let studentResponses: string;
+
+    try {
+      // Extract text from ideal content file
+      const idealBuffer = files.ideal_content_file.tempFilePath 
+        ? fs.readFileSync(files.ideal_content_file.tempFilePath)
+        : Buffer.from(files.ideal_content_file.data);
+      
+      idealContent = await extractTextFromPDF(idealBuffer);
+
+      // Extract text from student responses file
+      const studentBuffer = files.student_responses_file.tempFilePath
+        ? fs.readFileSync(files.student_responses_file.tempFilePath)
+        : Buffer.from(files.student_responses_file.data);
+      
+      studentResponses = await extractTextFromPDF(studentBuffer);
+
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error: "Could not extract text from files. For image files, please ensure OCR service is running."
+      });
+    }
+
+    if (!idealContent.trim() || !studentResponses.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Uploaded files appear to be empty or unreadable"
+      });
+    }
+
+    // Analyze with chunked processing (legacy method)
+    const analysis = await analyzeChunkedContent(idealContent, studentResponses, subject, grade, topic);
+
+    // Clean up temp files
+    if (files.ideal_content_file.tempFilePath) {
+      fs.unlinkSync(files.ideal_content_file.tempFilePath);
+    }
+    if (files.student_responses_file.tempFilePath) {
+      fs.unlinkSync(files.student_responses_file.tempFilePath);
+    }
+
+    const response: PracticeAnalysisResponse = {
+      success: true,
+      overall_score: analysis.overall_score || 0,
+      total_marks: analysis.total_marks || 100,
+      question_analyses: analysis.question_analyses || [],
+      general_feedback: analysis.general_feedback || "Analysis completed using legacy processing."
+    };
+
+    res.json(response);
+
+  } catch (error) {
+    console.error('Practice analysis error:', error);
+    
+    if (error instanceof Error && error.message.includes('API key')) {
+      return res.status(401).json({
+        success: false,
+        error: "OpenAI API key not configured or invalid"
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : "Analysis failed"
+    });
+  }
+};
+
+// Multi-image analysis endpoint
+export const analyzePracticeMultiImage = async (req: Request, res: Response) => {
+  try {
+    const { subject, grade, topic } = req.body;
+    const files = req.files as any;
+
+    // Check for required fields
+    if (!subject || !grade || !topic) {
+      return res.status(400).json({
+        success: false,
+        error: "Subject, grade, and topic are required"
+      });
+    }
+
+    // Check for required files
+    if (!files?.ideal_content_file) {
+      return res.status(400).json({
+        success: false,
+        error: "Ideal content file is required"
+      });
+    }
+
+    if (!files?.student_responses_images) {
+      return res.status(400).json({
+        success: false,
+        error: "Student response images are required"
+      });
+    }
+
+    // Validate that response files are images
+    const images = Array.isArray(files.student_responses_images) 
+      ? files.student_responses_images 
+      : [files.student_responses_images];
+    
+    const nonImageFiles = images.filter(img => !img.mimetype.startsWith('image/'));
+    if (nonImageFiles.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: "All student response files must be images"
+      });
+    }
+
+    // Try to forward to FastAPI OCR service
+    const ocrResult = await forwardToOCRService(req, '/analyze-practice-multi-image');
+    if (ocrResult) {
+      return res.json(ocrResult);
+    }
+
+    // If OCR service unavailable, return error for image processing
+    res.status(503).json({
+      success: false,
+      error: "OCR service is required for image processing but is currently unavailable. Please try again later or use PDF files."
+    });
+
+  } catch (error) {
+    console.error('Multi-image analysis error:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : "Multi-image analysis failed"
+    });
+  }
+};
+
+// Legacy PDF text extraction function (kept for fallback)
 async function extractTextFromPDF(fileBuffer: Buffer): Promise<string> {
   try {
     // For now, we'll assume the PDF contains readable text or is a text-based PDF
@@ -227,101 +591,27 @@ Analyze this section and provide JSON response:
   };
 }
 
-export const analyzePracticeSession = async (req: Request, res: Response) => {
-  try {
-    const { subject, grade, topic } = req.body;
-    const files = req.files as any;
-
-    if (!files?.ideal_content_pdf || !files?.student_responses_pdf) {
-      return res.status(400).json({
-        success: false,
-        error: "Both ideal content and student responses PDF files are required"
-      });
-    }
-
-    if (!subject || !grade || !topic) {
-      return res.status(400).json({
-        success: false,
-        error: "Subject, grade, and topic are required"
-      });
-    }
-
-    // Extract text from uploaded PDFs
-    let idealContent: string;
-    let studentResponses: string;
-
-    try {
-      // Extract text from ideal content PDF
-      const idealBuffer = files.ideal_content_pdf.tempFilePath 
-        ? fs.readFileSync(files.ideal_content_pdf.tempFilePath)
-        : Buffer.from(files.ideal_content_pdf.data);
-      
-      idealContent = await extractTextFromPDF(idealBuffer);
-
-      // Extract text from student responses PDF
-      const studentBuffer = files.student_responses_pdf.tempFilePath
-        ? fs.readFileSync(files.student_responses_pdf.tempFilePath)
-        : Buffer.from(files.student_responses_pdf.data);
-      
-      studentResponses = await extractTextFromPDF(studentBuffer);
-
-    } catch (error) {
-      return res.status(400).json({
-        success: false,
-        error: "Could not extract text from PDF files. Please ensure they are valid PDF documents with readable text."
-      });
-    }
-
-    if (!idealContent.trim() || !studentResponses.trim()) {
-      return res.status(400).json({
-        success: false,
-        error: "Uploaded files appear to be empty or unreadable"
-      });
-    }
-
-    // Analyze with chunked processing
-    const analysis = await analyzeChunkedContent(idealContent, studentResponses, subject, grade, topic);
-
-    // Clean up temp files
-    if (files.ideal_content_pdf.tempFilePath) {
-      fs.unlinkSync(files.ideal_content_pdf.tempFilePath);
-    }
-    if (files.student_responses_pdf.tempFilePath) {
-      fs.unlinkSync(files.student_responses_pdf.tempFilePath);
-    }
-
-    const response: PracticeAnalysisResponse = {
-      success: true,
-      overall_score: analysis.overall_score || 0,
-      total_marks: analysis.total_marks || 100,
-      question_analyses: analysis.question_analyses || [],
-      general_feedback: analysis.general_feedback || "Analysis completed."
-    };
-
-    res.json(response);
-
-  } catch (error) {
-    console.error('Practice analysis error:', error);
-    
-    if (error instanceof Error && error.message.includes('API key')) {
-      return res.status(401).json({
-        success: false,
-        error: "OpenAI API key not configured or invalid"
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : "Analysis failed"
-    });
-  }
-};
-
 export const getPracticeConfigOptions = async (req: Request, res: Response) => {
   res.json({
     subjects: ["Mathematics", "Science", "English", "Social Studies", "Hindi", "Physics", "Chemistry", "Biology"],
     grades: ["6", "7", "8", "9", "10", "11", "12"],
     analysis_types: ["detailed", "quick", "conceptual"],
-    supported_formats: ["PDF"]
+    supported_formats: ["PDF", "JPEG", "PNG", "BMP", "TIFF", "WebP"],
+    input_methods: ["upload_pdf", "upload_image", "multi_image_upload"],
+    max_file_size: "10MB",
+    max_images_per_submission: 10,
+    ocr_features: {
+      handwriting_recognition: true,
+      mathematical_expressions: true,
+      diagram_text_extraction: true,
+      multi_language_support: true
+    },
+    features: {
+      cbse_analysis: true,
+      step_by_step_feedback: true,
+      misconception_detection: true,
+      improvement_suggestions: true,
+      ocr_preview: true
+    }
   });
 };
