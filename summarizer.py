@@ -2,6 +2,7 @@ import os
 from openai import OpenAI
 from langsmith import traceable, Client
 from dotenv import load_dotenv
+from youtube_transcript_api._api import YouTubeTranscriptApi
 
 # Load environment variables
 load_dotenv()
@@ -126,6 +127,20 @@ def clean_markdown(md: str) -> str:
     md = re.sub(r"\s*\\\]", r"\\]", md)
     return md
 
+def get_youtube_transcript(video_url: str) -> str:
+    """
+    Extracts the transcript from a YouTube video URL and returns it as a single string.
+    """
+    # Extract video ID from the URL
+    if "v=" in video_url:
+        video_id = video_url.split("v=")[-1].split("&")[0]
+    elif "youtu.be/" in video_url:
+        video_id = video_url.split("youtu.be/")[-1].split("?")[0]
+    else:
+        raise ValueError("Invalid YouTube URL format")
+    transcript = YouTubeTranscriptApi.get_transcript(video_id)
+    # Combine all text into a single string
+    return " ".join([item['text'] for item in transcript])
 
 # Orchestrator class to run the full summarization pipeline
 class SummarizationOrchestrator:
@@ -148,3 +163,10 @@ class SummarizationOrchestrator:
         print(raw_output["markdown"])
 
         return raw_output
+
+    def summarize_youtube(self, video_url: str) -> dict:
+        """
+        Fetches the transcript from a YouTube video and summarizes it using the orchestrator pipeline.
+        """
+        transcript = get_youtube_transcript(video_url)
+        return self.summarize(transcript)

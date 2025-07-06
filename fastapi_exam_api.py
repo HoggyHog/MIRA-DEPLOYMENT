@@ -14,6 +14,7 @@ from pypdf.errors import PdfStreamError
 import pdfplumber
 import fitz  # PyMuPDF
 from summarizer import SummarizationOrchestrator
+from youtube_transcript_api import YouTubeTranscriptApi
 
 # Load environment variables from .env
 load_dotenv()
@@ -109,6 +110,27 @@ async def summarize_content(request: Request, file: Optional[UploadFile] = File(
     #summary = summarize_text_with_llm(text)
     print(summary)
     return JSONResponse({"summary": summary})
+
+def get_youtube_transcript(video_url: str) -> str:
+    # Extract video ID from the URL
+    video_id = video_url.split("v=")[-1].split("&")[0]
+    transcript = YouTubeTranscriptApi.get_transcript(video_id)
+
+    # Combine all text into a single string
+    return " ".join([item['text'] for item in transcript])
+
+@app.post("/api/summarize-youtube")
+async def summarize_youtube(request: Request):
+
+    data = await request.json()
+    youtube_url = data.get("url", "")
+    transcript = get_youtube_transcript(youtube_url)
+    print(youtube_url)
+    #orchestrator = SummarizationOrchestrator(grade="10", subject="Science")
+    #summary = orchestrator.summarize_youtube(youtube_url)['markdown']
+    return JSONResponse({"title": "Trial", "markdown": transcript})
+
+
 
 if __name__ == "__main__":
     import uvicorn

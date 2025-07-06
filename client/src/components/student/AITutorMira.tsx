@@ -436,14 +436,24 @@ const AITutorMira = () => {
         const formData = new FormData();
         //formData.append('file', new Blob([content.title], { type: 'application/pdf' }), content.title + '.pdf');
         formData.append('file', content.file);
-        const response = await fetch('http://localhost:4444/api/summarize-content', {
+        const response = await fetch('http://localhost:8001/api/summarize-content', {
           method: 'POST',
           body: formData,
         });
         const result = await response.json();
         summary = result.summary;
-      } else if (content.type === 'text') {
-        const response = await fetch('http://localhost:4444/api/summarize-content', {
+      }
+      else if (content.type === 'youtube') {
+        const response = await fetch('http://localhost:8001/api/summarize-youtube', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: content.summary || content.title }),
+        });
+        const result = await response.json();
+        summary = result.markdown || result.summary || '';
+      }
+       else if (content.type === 'text') {
+        const response = await fetch('http://localhost:8001/api/summarize-content', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: content.summary || content.title }),
@@ -452,7 +462,7 @@ const AITutorMira = () => {
         summary = result.summary;
       }
       setSummaries(prev => ({ ...prev, [content.id]: summary }));
-    } catch (error) {
+    } catch (error: any) {
       setSummaries(prev => ({ ...prev, [content.id]: 'Failed to summarize content.' }));
     } finally {
       setIsSummarizing(prev => ({ ...prev, [content.id]: false }));
