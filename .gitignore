@@ -5,6 +5,7 @@ cbse_validation_db/
 chroma_db_electricity/
 chroma_db_lesson_ncjescsa12_5f4260ed17/
 uploads/
+vision_cred.json
 *.log
 # Ignore Python cache
 __pycache__/
