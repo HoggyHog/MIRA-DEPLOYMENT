@@ -10,7 +10,7 @@ import os
 def start_practice_api():
     """Start the Practice Playground FastAPI server"""
     try:
-        print("Starting AI Practice Playground API on port 8003...")
+        print("Starting AI Practice Playground API on port 8001...")
         
         # Change to the directory where the script is located
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -21,7 +21,7 @@ def start_practice_api():
             sys.executable, "-m", "uvicorn", 
             "practice_playground_api:app", 
             "--host", "0.0.0.0", 
-            "--port", "8003",
+            "--port", "8001",
             "--reload"
         ], check=True)
         

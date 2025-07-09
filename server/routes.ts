@@ -18,10 +18,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes (no authentication required)
   app.use('/api/auth', authRoutes);
 
-  // Public routes (no authentication required)
-  app.get('/api/config-options', getConfigOptions);
-  app.get('/api/lesson-config-options', getLessonConfigOptions);
-  app.get('/api/practice-config-options', getPracticeConfigOptions);
+  // Public routes (no authentication required) - These are now handled by FastAPI
+  // app.get('/api/config-options', getConfigOptions);
+  // app.get('/api/lesson-config-options', getLessonConfigOptions);
+  // app.get('/api/practice-config-options', getPracticeConfigOptions);
 
   // Protected routes - require authentication
   app.use('/api/protected', verifyToken);

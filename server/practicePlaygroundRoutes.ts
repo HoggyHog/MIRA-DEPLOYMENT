@@ -44,7 +44,7 @@ interface PracticeAnalysisResponse {
 // Check if FastAPI OCR service is available
 const checkOCRServiceAvailability = async (): Promise<boolean> => {
   try {
-    const response = await fetch('http://localhost:8003/health', { 
+    const response = await fetch('http://localhost:8001/health', { 
       method: 'GET',
       timeout: 5000 
     });
@@ -113,7 +113,7 @@ const forwardToOCRService = async (req: Request, endpoint: string): Promise<Resp
       }
     }
 
-    const response = await fetch(`http://localhost:8003${endpoint}`, {
+    const response = await fetch(`http://localhost:8001/api${endpoint}`, {
       method: 'POST',
       body: formData,
       timeout: 30000 // 30 second timeout for OCR processing
@@ -177,7 +177,7 @@ export const previewOCR = async (req: Request, res: Response) => {
         contentType: file.mimetype
       });
 
-      const response = await fetch('http://localhost:8003/ocr-preview', {
+      const response = await fetch('http://localhost:8001/api/ocr-preview', {
         method: 'POST',
         body: formData,
         timeout: 15000

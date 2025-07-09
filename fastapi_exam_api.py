@@ -14,7 +14,7 @@ from pypdf.errors import PdfStreamError
 import pdfplumber
 import fitz  # PyMuPDF
 from summarizer import SummarizationOrchestrator
-from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api._api import YouTubeTranscriptApi
 
 # Load environment variables from .env
 load_dotenv()
@@ -81,7 +81,7 @@ def summarize_text_with_llm(text: str) -> str:
         max_tokens=512,
         temperature=0.3
     )
-    return response.choices[0].message.content
+    return response.choices[0].message.content or ""
 
 @app.post("/api/summarize-content")
 async def summarize_content(request: Request, file: Optional[UploadFile] = File(None)):

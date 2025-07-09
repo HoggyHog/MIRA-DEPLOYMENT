@@ -3,6 +3,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import fileUpload from "express-fileupload";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { createProxyMiddleware } from 'http-proxy-middleware';
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -54,18 +55,32 @@ app.use((req, res, next) => {
     throw err;
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
+  // Register the proxy BEFORE Vite/static
+  app.use('/api', createProxyMiddleware({
+    target: 'http://localhost:8001',  // FastAPI server
+    changeOrigin: true,
+    logLevel: 'debug',
+    // no pathRewrite needed
+    onProxyReq: (proxyReq, req, res) => {
+      log(`🔀 Proxying ${req.method} ${req.path} to FastAPI`);
+    },
+    onProxyRes: (proxyRes, req, res) => {
+      log(`✅ FastAPI response: ${proxyRes.statusCode} for ${req.method} ${req.path}`);
+    },
+    onError: (err, req, res) => {
+      log(`❌ Proxy error for ${req.method} ${req.path}: ${err.message}`);
+      res.status(500).json({ error: 'Proxy error', details: err.message });
+    }
+  }));
+
+  // Vite/static setup LAST
   if (app.get("env") === "development") {
     await setupVite(app, server);
   } else {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on port 5000
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
+  // ALWAYS serve the app on port 3000
   const port = 3000;
   server.listen({
     port,
