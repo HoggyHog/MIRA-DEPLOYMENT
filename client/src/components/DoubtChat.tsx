@@ -130,13 +130,24 @@ const DoubtChat = () => {
       }, 600);
 
       try {
-        const response = await apiRequest('/api/solve-doubt', {
+        const formData = new FormData();
+        formData.append('grade', data.grade);
+        formData.append('subject', data.subject);
+        formData.append('topic', data.topic);
+        formData.append('subtopic', data.subtopic || '');
+        formData.append('doubt', data.doubt);
+        formData.append('resolution_type', data.resolution_type);
+
+        const response = await fetch('/api/solve-doubt', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(data),
+          body: formData,
         });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        return response.json();
         setLoadingProgress(100);
         clearInterval(progressInterval);
         return response;

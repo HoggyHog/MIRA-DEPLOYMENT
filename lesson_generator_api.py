@@ -5,7 +5,7 @@ from pydantic import BaseModel
 import uvicorn
 import os
 import sys
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any, Dict
 from dotenv import load_dotenv
 from pypdf import PdfReader
 from io import BytesIO
@@ -301,9 +301,9 @@ def process_file_content(file_bytes: bytes, filename: str) -> str:
 def validate_file(file: UploadFile) -> bool:
     """Validate uploaded file"""
     try:
-        # Check file size (max 10MB)
-        if file.size and file.size > 10 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail="File size too large. Maximum 10MB allowed.")
+        # Check file size (max 50MB)
+        if file.size and file.size > 50 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File size too large. Maximum 50MB allowed.")
         
         # Check file extension
         allowed_extensions = ['pdf', 'jpg', 'jpeg', 'png', 'bmp', 'tiff', 'webp', 'txt']
@@ -584,5 +584,389 @@ async def generate_exam_endpoint(request: Request):
             "error": str(e)
         }
 
+# AI Tutor Exam Generation Endpoint
+class ContentSource(BaseModel):
+    source_type: str  # 'pdf' | 'youtube' | 'text' | 'slides'
+    content: str
+    title: str
+    metadata: Optional[Dict[str, Any]] = None
+
+class AIExamRequest(BaseModel):
+    content_sources: List[ContentSource]
+    student_grade: str
+    subject: str
+    num_questions: Optional[int] = 5
+    difficulty_level: Optional[str] = "medium"
+    question_types: Optional[List[str]] = ["mcq", "short_answer"]
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    content_sources: List[ContentSource]
+    chat_history: List[ChatMessage]
+    current_question: str
+    student_grade: str
+    subject: str
+
+class ChatResponse(BaseModel):
+    success: bool
+    response: Optional[str] = None
+    suggestions: Optional[List[str]] = None
+    follow_up_questions: Optional[List[str]] = None
+    error: Optional[str] = None
+
+@app.post("/api/ai-tutor/generate-exam")
+async def ai_tutor_generate_exam(request: AIExamRequest):
+    """Generate personalized exam using AI Tutor"""
+    try:
+        # Process content sources
+        combined_content = ""
+        for source in request.content_sources:
+            combined_content += f"--- {source.title} ---\n{source.content}\n\n"
+        
+        # Create exam generation prompt
+        question_types_str = ', '.join(request.question_types or ["mcq", "short_answer"])
+        exam_prompt = f"""You are Mira, an AI tutor creating personalized exams for school students.
+
+EXAM CREATION GUIDELINES:
+- Design questions appropriate for {request.student_grade} level
+- Focus on {request.subject} concepts from the provided content
+- Difficulty level: {request.difficulty_level or "medium"}
+- Include variety in question types
+- Provide clear, fair marking schemes
+- Add helpful hints for difficult questions
+
+QUESTION TYPES TO INCLUDE: {question_types_str}
+
+FOR EACH QUESTION PROVIDE:
+1. Clear, unambiguous question text
+2. Marking scheme with point allocation
+3. Model answer/expected response
+4. Common mistakes students make
+5. Helpful hints if needed
+
+Ensure questions test understanding, not just memorization!"""
+
+        user_message = f"""
+CONTENT FOR EXAM:
+{combined_content}
+
+EXAM REQUIREMENTS:
+- Number of questions: {request.num_questions or 5}
+- Question types: {question_types_str}
+- Difficulty level: {request.difficulty_level or "medium"}
+- Student grade: {request.student_grade}
+- Subject: {request.subject}
+
+Generate exam questions with complete marking schemes and explanations.
+Format as JSON with this structure:
+{{
+    "questions": [
+        {{
+            "id": 1,
+            "type": "mcq",
+            "question": "Question text",
+            "options": ["A", "B", "C", "D"],
+            "correct_answer": "A",
+            "marks": 2,
+            "explanation": "Why this is correct",
+            "hints": ["Helpful hint"]
+        }}
+    ],
+    "total_marks": 20,
+    "estimated_time": 30
+}}
+"""
+
+        # Get AI response
+        ai_response = get_gpt4o_response([
+            {"role": "system", "content": exam_prompt},
+            {"role": "user", "content": user_message}
+        ], temperature=0.5)
+
+        # Try to parse JSON response
+        try:
+            # Clean JSON response
+            cleaned_response = ai_response.strip()
+            if cleaned_response.startswith('```json'):
+                cleaned_response = cleaned_response[7:-3]
+            elif cleaned_response.startswith('```'):
+                cleaned_response = cleaned_response[3:-3]
+
+            exam_data = json.loads(cleaned_response)
+            
+            num_questions = request.num_questions or 5
+            return {
+                "success": True,
+                "questions": exam_data.get("questions", []),
+                "total_marks": exam_data.get("total_marks", num_questions * 2),
+                "estimated_time": exam_data.get("estimated_time", num_questions * 3)
+            }
+
+        except json.JSONDecodeError:
+            # Fallback exam generation
+            num_questions = request.num_questions or 5
+            fallback_questions = []
+            for i in range(num_questions):
+                fallback_questions.append({
+                    "id": i + 1,
+                    "type": "mcq",
+                    "question": f"Question {i + 1} about the provided content",
+                    "options": ["Option A", "Option B", "Option C", "Option D"],
+                    "correct_answer": "Option A",
+                    "marks": 2,
+                    "explanation": "Detailed explanation of the correct answer",
+                    "hints": ["Consider the main concepts from the content"]
+                })
+
+            return {
+                "success": True,
+                "questions": fallback_questions,
+                "total_marks": num_questions * 2,
+                "estimated_time": num_questions * 3
+            }
+
+    except Exception as e:
+        logger.error(f"AI Tutor exam generation error: {e}")
+        return {
+            "success": False,
+            "error": f"Failed to generate exam: {str(e)}"
+        }
+
+# Chat Tutor Endpoint
+@app.post("/api/ai-tutor/chat", response_model=ChatResponse)
+async def ai_tutor_chat(request: ChatRequest):
+    """
+    Chat with AI tutor using content sources and chat history.
+    """
+    try:
+        # Process content sources for context
+        combined_content = ""
+        for source in request.content_sources:
+            combined_content += f"\n\nSource: {source.title}\n{source.content}\n"
+
+        # Format chat prompt
+        chat_prompt = f"""You are Mira, a friendly and patient AI tutor having a conversation with a {request.student_grade} student about {request.subject}.
+
+CRITICAL: You MUST format ALL mathematical content using LaTeX notation.
+
+CONVERSATION STYLE:
+- Be warm, encouraging, and supportive
+- Use age-appropriate language and examples
+- Ask follow-up questions to check understanding
+- Celebrate progress and learning moments
+- Be patient with mistakes and confusion
+- Provide gentle corrections and guidance
+
+TUTORING APPROACH:
+- Listen carefully to the student's question
+- Identify the core concept they're struggling with
+- Explain using simple, relatable terms
+- Use examples from their everyday life
+- Check understanding with gentle questions
+- Offer encouragement and positive reinforcement
+
+MATHEMATICAL FORMATTING:
+- ALWAYS use LaTeX notation for ALL mathematical expressions
+- For inline math within text, use \\( ... \\) delimiters
+- For standalone equations, use \\[ ... \\] delimiters
+- Examples: 
+  * "The formula \\(E = mc^2\\) shows..." for inline
+  * For standalone: \\[E = mc^2\\]
+  * For calculations: \\[3 \\times 60 \\times 60 = 10800\\]
+- Convert ALL numbers, equations, and mathematical operations to LaTeX
+- Never write plain text math like "3×60×60" - always use \\(3 \\times 60 \\times 60\\)
+- Format units properly: \\(40 \\text{{ W}}\\), \\(10800 \\text{{ s}}\\)
+
+CONTENT CONTEXT:
+Use the provided educational content to inform your responses, but adapt explanations to be conversational and student-friendly.
+
+Remember: You're not just answering questions, you're building confidence and love for learning!"""
+
+        # Build conversation messages
+        conversation_messages = [{"role": "system", "content": chat_prompt}]
+
+        # Add content context
+        context_message = f"""
+EDUCATIONAL CONTENT CONTEXT:
+{combined_content}
+
+Use this content to inform your responses, but keep them conversational and appropriate for a {request.student_grade} student studying {request.subject}.
+"""
+        conversation_messages.append({"role": "system", "content": context_message})
+
+        # Add chat history (last 10 messages for context)
+        if request.chat_history and len(request.chat_history) > 0:
+            recent_history = request.chat_history[-10:]
+            for msg in recent_history:
+                conversation_messages.append({"role": msg.role, "content": msg.content})
+
+        # Add current question
+        conversation_messages.append({
+            "role": "user",
+            "content": request.current_question
+        })
+
+        # Get response
+        ai_response = get_gpt4o_response(conversation_messages, temperature=0.8)
+
+        # Generate follow-up suggestions
+        suggestion_prompt = f"""
+Based on this tutoring conversation about {request.subject} for a {request.student_grade} student:
+
+STUDENT QUESTION: {request.current_question}
+TUTOR RESPONSE: {ai_response}
+
+Generate 3 helpful follow-up suggestions or questions the student might want to ask next.
+Return as JSON array: ["suggestion1", "suggestion2", "suggestion3"]
+"""
+
+        try:
+            suggestion_messages = [
+                {"role": "system", "content": "Generate helpful follow-up suggestions. Return only JSON array."},
+                {"role": "user", "content": suggestion_prompt}
+            ]
+
+            suggestions_response = get_gpt4o_response(suggestion_messages, temperature=0.6)
+
+            # Parse suggestions
+            cleaned_suggestions = suggestions_response.strip()
+            if cleaned_suggestions.startswith('```'):
+                cleaned_suggestions = cleaned_suggestions[3:-3]
+
+            suggestions = json.loads(cleaned_suggestions)
+
+            return ChatResponse(
+                success=True,
+                response=ai_response,
+                suggestions=suggestions,
+                follow_up_questions=suggestions
+            )
+
+        except (json.JSONDecodeError, Exception) as parse_error:
+            logger.warning(f"Failed to parse suggestions: {parse_error}")
+            return ChatResponse(
+                success=True,
+                response=ai_response,
+                suggestions=[
+                    "Can you explain this with an example?",
+                    "What are the key points I should remember?",
+                    "How does this connect to what we learned before?"
+                ],
+                follow_up_questions=[
+                    "Can you explain this with an example?",
+                    "What are the key points I should remember?",
+                    "How does this connect to what we learned before?"
+                ]
+            )
+
+    except Exception as e:
+        logger.error(f"Chat tutor error: {e}")
+        return ChatResponse(
+            success=False,
+            error=f"Failed to process chat: {str(e)}"
+        )
+
+# Doubt Solving Endpoint
+class DoubtResponse(BaseModel):
+    success: bool
+    answer: Optional[str] = None
+    quality_score: Optional[float] = None
+    iterations: Optional[int] = None
+    context_used: Optional[int] = None
+    todo_list: Optional[List[str]] = None
+    error: Optional[str] = None
+
+@app.post("/api/solve-doubt", response_model=DoubtResponse)
+async def solve_doubt_endpoint(
+    grade: int = Form(...),
+    subject: str = Form(...),
+    topic: str = Form(...),
+    subtopic: str = Form(...),
+    doubt: str = Form(...),
+    resolution_type: str = Form("explanation"),
+    curriculum_pdf: Optional[UploadFile] = File(None),
+    ncert_pdf: Optional[UploadFile] = File(None)
+):
+    """
+    Solve a student's doubt using curriculum-aware AI responses.
+    """
+    try:
+        # Try to use ChromaDB for curriculum context if available
+        curriculum_context = ""
+        try:
+            import chromadb
+            from chromadb.config import Settings
+            
+            # Initialize ChromaDB client
+            client = chromadb.PersistentClient(path="./attached_assets/chroma_db_curriculum")
+            
+            # Search for relevant curriculum content
+            collection = client.get_collection("curriculum")
+            results = collection.query(
+                query_texts=[f"{subject} {topic} {subtopic} {doubt}"],
+                n_results=3
+            )
+            
+            if results['documents'] and results['documents'][0]:
+                curriculum_context = "\n\nCurriculum Context:\n" + "\n".join(results['documents'][0])
+                
+        except Exception as e:
+            logger.warning(f"Could not load curriculum context: {e}")
+            curriculum_context = ""
+
+        # Create a comprehensive prompt for doubt solving
+        prompt = f"""You are an expert {subject} teacher for Grade {grade} students following CBSE curriculum standards.
+
+A student has the following doubt:
+Subject: {subject}
+Topic: {topic}
+Subtopic: {subtopic}
+Doubt: {doubt}
+
+{curriculum_context}
+
+Please provide a comprehensive, step-by-step explanation that:
+1. Addresses the specific doubt clearly and directly
+2. Uses age-appropriate language for Grade {grade} students
+3. Includes relevant examples, analogies, and step-by-step solutions
+4. Follows CBSE curriculum standards and learning objectives
+5. Encourages understanding rather than memorization
+6. Provides practical applications and real-world connections where relevant
+
+Resolution type requested: {resolution_type}
+
+Provide a detailed, educational response that helps the student understand the concept thoroughly:"""
+
+        # Get AI response using the existing GPT function
+        ai_response = get_gpt4o_response([
+            {"role": "system", "content": "You are an expert CBSE teacher who provides clear, comprehensive explanations to students. Always be encouraging and supportive in your responses."},
+            {"role": "user", "content": prompt}
+        ], temperature=0.3)
+
+        # Calculate a quality score based on response length and content
+        quality_score = min(0.95, 0.6 + (len(ai_response) / 1500) * 0.35)
+        
+        # Determine context usage
+        context_used = len(curriculum_context) if curriculum_context else 0
+
+        return DoubtResponse(
+            success=True,
+            answer=ai_response,
+            quality_score=quality_score,
+            iterations=1,
+            context_used=context_used,
+            todo_list=["Enhance curriculum integration", "Add interactive examples", "Implement follow-up questions"]
+        )
+        
+    except Exception as e:
+        logger.error(f"Doubt solving error: {e}")
+        return DoubtResponse(
+            success=False,
+            error=str(e)
+        )
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="localhost", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

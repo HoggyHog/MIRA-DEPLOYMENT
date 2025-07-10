@@ -475,18 +475,16 @@ export const LecturePreparation = () => {
     }, 600);
 
     try {
+      const formDataToSend = new FormData();
+      formDataToSend.append('grade_level', formData.grade_level);
+      formDataToSend.append('subject', formData.subject);
+      formDataToSend.append('topic', formData.topic);
+      formDataToSend.append('subtopics', formData.subtopics);
+      formDataToSend.append('special_requirements', formData.special_requirements || '');
+
       const response = await fetch('/api/generate-lesson', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          grade_level: formData.grade_level,
-          subject: formData.subject,
-          topic: formData.topic,
-          subtopics: formData.subtopics,
-          special_requirements: formData.special_requirements || ''
-        })
+        body: formDataToSend
       });
 
       if (response.ok) {

@@ -364,7 +364,7 @@ export const AIExamGenerator = () => {
 
   const fetchConfigOptions = async () => {
     try {
-      const response = await fetch('http://localhost:8001/api/config-options');
+      const response = await fetch('/api/config-options');
       if (response.ok) {
         const options = await response.json();
         setConfigOptions(options);
@@ -458,7 +458,7 @@ export const AIExamGenerator = () => {
     }, 500);
 
     try {
-      const response = await fetch('http://localhost:8001/api/generate-exam', {
+      const response = await fetch('/api/generate-exam', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -111,7 +111,7 @@ const PracticePlaygroundDemo = () => {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('http://localhost:8001/api/ocr-preview', {
+      const response = await fetch('/api/ocr-preview', {
         method: 'POST',
         body: formData,
       });
@@ -276,7 +276,7 @@ const PracticePlaygroundDemo = () => {
       formData.append('grade', config.grade);
       formData.append('topic', config.topic);
 
-      let endpoint = 'http://localhost:8001/api/analyze-practice';
+      let endpoint = '/api/analyze-practice';
 
       if (inputMode === 'text') {
         // Create text-based "files" from the text areas for compatibility
@@ -300,7 +300,7 @@ const PracticePlaygroundDemo = () => {
           studentResponsesImages.forEach(image => {
             formData.append('student_responses_images', image);
           });
-          endpoint = 'http://localhost:8001/api/analyze-practice-multi-image';
+          endpoint = '/api/analyze-practice-multi-image';
         }
       }
 

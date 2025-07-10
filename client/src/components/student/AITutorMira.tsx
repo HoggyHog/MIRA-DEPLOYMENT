@@ -436,7 +436,7 @@ const AITutorMira = () => {
         const formData = new FormData();
         //formData.append('file', new Blob([content.title], { type: 'application/pdf' }), content.title + '.pdf');
         formData.append('file', content.file);
-        const response = await fetch('http://localhost:8001/api/summarize-content', {
+        const response = await fetch('/api/summarize-content', {
           method: 'POST',
           body: formData,
         });
@@ -444,7 +444,7 @@ const AITutorMira = () => {
         summary = result.summary;
       }
       else if (content.type === 'youtube') {
-        const response = await fetch('http://localhost:8001/api/summarize-youtube', {
+        const response = await fetch('/api/summarize-youtube', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url: content.summary || content.title }),
@@ -453,7 +453,7 @@ const AITutorMira = () => {
         summary = result.markdown || result.summary || '';
       }
        else if (content.type === 'text') {
-        const response = await fetch('http://localhost:8001/api/summarize-content', {
+        const response = await fetch('/api/summarize-content', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: content.summary || content.title }),

@@ -28,7 +28,7 @@ var generateExamPaper = async (req, res) => {
       special_remarks: sanitizeInput(config.special_remarks),
       total_marks: config.total_marks
     };
-    const pythonProcess = spawn("python3", ["-c", `
+    const pythonProcess = spawn("./venv/bin/python", ["-c", `
 import sys
 import json
 from QPA_2 import generate_cbse_exam_paper
@@ -98,104 +98,38 @@ print(json.dumps(result))
     });
   }
 };
-var getConfigOptions = async (req, res) => {
-  res.json({
-    grades: ["6", "7", "8", "9", "10", "11", "12"],
-    subjects: ["Mathematics", "Science", "English", "Social Studies", "Hindi"],
-    difficulty_levels: ["easy", "medium", "hard", "mixed"],
-    question_types: ["mcq", "short_answer", "long_answer", "numerical", "diagram", "mixed"],
-    exam_durations: ["30", "60", "90", "120", "180"]
-  });
-};
 
 // server/lessonRoutes.ts
-import { spawn as spawn2 } from "child_process";
 import fetch from "node-fetch";
 var callEnhancedLessonGenerator = async (subject, topic, subtopics, gradeLevel, specialRequirements) => {
+  console.log("Calling FastAPI lesson generator service");
   try {
-    if (response.ok) {
-      const result = await response.json();
-      if (result.success) {
-        return {
-          lessonContent: result.lesson_content,
-          lessonData: null
-        };
-      } else {
-        throw new Error(result.error || "RAG API returned error");
-      }
-    } else {
-      throw new Error(`RAG API responded with status: ${response.status}`);
-    }
-  } catch (ragError) {
-    console.log("RAG API unavailable, falling back to original method:", ragError.message);
-    return new Promise((resolve, reject) => {
-      const escapeForPython = (str) => JSON.stringify(str);
-      const pythonScript = `
-import sys
-import os
-sys.path.append('.')
-from final_agentic_m4_RAG_logic import OrchestratorAgent
-import json
-
-try:
-    # Initialize the comprehensive multi-agent orchestrator
-    orchestrator = OrchestratorAgent()
-    
-    # Generate lesson using the enhanced RAG-enabled multi-agent system
-    lesson = orchestrator.generate_lesson(
-        subject=${escapeForPython(subject)},
-        topic=${escapeForPython(topic)},
-        grade_level=${escapeForPython(gradeLevel)},
-        pdf_path=None,
-        subtopics=${escapeForPython(subtopics)},
-        special_requirements=${escapeForPython(specialRequirements)}
-    )
-    
-    # Convert lesson to markdown format only
-    lesson_content = lesson.to_markdown()
-    
-    # Print markdown with clear delimiters for extraction
-    print("###MARKDOWN_START###")
-    print(lesson_content)
-    print("###MARKDOWN_END###")
-except Exception as e:
-    print("###ERROR_START###")
-    print(f"Error: {str(e)}")
-    print("###ERROR_END###")
-`;
-      const python = spawn2("python3", ["-c", pythonScript], {
-        env: { ...process.env, PYTHONPATH: "." }
-      });
-      let output = "";
-      let errorOutput = "";
-      python.stdout.on("data", (data) => {
-        output += data.toString();
-      });
-      python.stderr.on("data", (data) => {
-        errorOutput += data.toString();
-      });
-      python.on("close", (code) => {
-        if (code !== 0) {
-          console.error("Python script error:", errorOutput);
-          reject(new Error(`Both RAG API and fallback failed. Python script failed with code ${code}: ${errorOutput}`));
-          return;
-        }
-        try {
-          const result = JSON.parse(output.trim());
-          if (result.success) {
-            resolve({
-              lessonContent: result.lesson_content,
-              lessonData: null
-            });
-          } else {
-            reject(new Error(result.error));
-          }
-        } catch (parseError) {
-          console.error("Failed to parse Python output:", output);
-          reject(new Error("Failed to parse lesson generation result"));
-        }
-      });
+    const formData = new FormData();
+    formData.append("subject", subject);
+    formData.append("topic", topic);
+    formData.append("subtopics", subtopics);
+    formData.append("grade_level", gradeLevel);
+    formData.append("special_requirements", specialRequirements);
+    const response = await fetch("http://localhost:8001/api/generate-lesson", {
+      method: "POST",
+      body: formData
     });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`FastAPI service error: ${response.status} - ${errorText}`);
+    }
+    const result = await response.json();
+    if (result.success) {
+      return {
+        lessonContent: result.lesson_content || "",
+        lessonData: null
+      };
+    } else {
+      throw new Error(result.error || "Unknown error from FastAPI service");
+    }
+  } catch (error) {
+    console.error("FastAPI service call failed:", error);
+    throw error;
   }
 };
 var generateLesson = async (req, res) => {
@@ -228,20 +162,266 @@ var generateLesson = async (req, res) => {
     });
   }
 };
-var getLessonConfigOptions = async (req, res) => {
-  res.json({
-    subjects: ["Mathematics", "Science", "English", "Social Studies", "Hindi", "Physics", "Chemistry", "Biology"],
-    grade_levels: ["6", "7", "8", "9", "10", "11", "12"],
-    difficulty_levels: ["easy", "medium", "hard", "mixed"]
-  });
-};
 
 // server/practicePlaygroundRoutes.ts
 import OpenAI from "openai";
 import fs from "fs";
+import fetch2 from "node-fetch";
+import FormData2 from "form-data";
 var openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
+var checkOCRServiceAvailability = async () => {
+  try {
+    const response = await fetch2("http://localhost:8001/health", {
+      method: "GET",
+      timeout: 5e3
+    });
+    return response.ok;
+  } catch (error) {
+    console.warn("FastAPI OCR service not available, falling back to text-only processing");
+    return false;
+  }
+};
+var forwardToOCRService = async (req, endpoint) => {
+  try {
+    const isOCRAvailable = await checkOCRServiceAvailability();
+    if (!isOCRAvailable) {
+      return null;
+    }
+    const formData = new FormData2();
+    if (req.body.subject) formData.append("subject", req.body.subject);
+    if (req.body.grade) formData.append("grade", req.body.grade);
+    if (req.body.topic) formData.append("topic", req.body.topic);
+    const files = req.files;
+    if (files) {
+      if (files.ideal_content_file) {
+        const fileBuffer = files.ideal_content_file.tempFilePath ? fs.readFileSync(files.ideal_content_file.tempFilePath) : Buffer.from(files.ideal_content_file.data);
+        formData.append("ideal_content_file", fileBuffer, {
+          filename: files.ideal_content_file.name,
+          contentType: files.ideal_content_file.mimetype
+        });
+      }
+      if (files.student_responses_file) {
+        const fileBuffer = files.student_responses_file.tempFilePath ? fs.readFileSync(files.student_responses_file.tempFilePath) : Buffer.from(files.student_responses_file.data);
+        formData.append("student_responses_file", fileBuffer, {
+          filename: files.student_responses_file.name,
+          contentType: files.student_responses_file.mimetype
+        });
+      }
+      if (files.student_responses_images) {
+        const images = Array.isArray(files.student_responses_images) ? files.student_responses_images : [files.student_responses_images];
+        images.forEach((image) => {
+          const fileBuffer = image.tempFilePath ? fs.readFileSync(image.tempFilePath) : Buffer.from(image.data);
+          formData.append("student_responses_images", fileBuffer, {
+            filename: image.name,
+            contentType: image.mimetype
+          });
+        });
+      }
+    }
+    const response = await fetch2(`http://localhost:8001/api${endpoint}`, {
+      method: "POST",
+      body: formData,
+      timeout: 3e4
+      // 30 second timeout for OCR processing
+    });
+    if (!response.ok) {
+      console.error(`FastAPI service error: ${response.status}`);
+      return null;
+    }
+    const result = await response.json();
+    if (files) {
+      Object.values(files).flat().forEach((file) => {
+        if (file.tempFilePath && fs.existsSync(file.tempFilePath)) {
+          fs.unlinkSync(file.tempFilePath);
+        }
+      });
+    }
+    return result;
+  } catch (error) {
+    console.error("Error forwarding to OCR service:", error);
+    return null;
+  }
+};
+var previewOCR = async (req, res) => {
+  try {
+    const files = req.files;
+    if (!files?.file) {
+      return res.status(400).json({
+        success: false,
+        error: "File is required for OCR preview"
+      });
+    }
+    const file = files.file;
+    if (!file.mimetype.startsWith("image/")) {
+      return res.status(400).json({
+        success: false,
+        error: "OCR preview is only available for image files"
+      });
+    }
+    try {
+      const formData = new FormData2();
+      const fileBuffer = file.tempFilePath ? fs.readFileSync(file.tempFilePath) : Buffer.from(file.data);
+      formData.append("file", fileBuffer, {
+        filename: file.name,
+        contentType: file.mimetype
+      });
+      const response = await fetch2("http://localhost:8001/api/ocr-preview", {
+        method: "POST",
+        body: formData,
+        timeout: 15e3
+      });
+      if (response.ok) {
+        const result = await response.json();
+        if (file.tempFilePath && fs.existsSync(file.tempFilePath)) {
+          fs.unlinkSync(file.tempFilePath);
+        }
+        return res.json(result);
+      }
+    } catch (error) {
+      console.error("FastAPI OCR preview failed:", error);
+    }
+    res.json({
+      success: true,
+      extracted_text: "OCR service temporarily unavailable. The image will be processed during full analysis.",
+      file_name: file.name,
+      file_type: file.mimetype.split("/")[1],
+      character_count: 0,
+      word_count: 0
+    });
+    if (file.tempFilePath && fs.existsSync(file.tempFilePath)) {
+      fs.unlinkSync(file.tempFilePath);
+    }
+  } catch (error) {
+    console.error("OCR preview error:", error);
+    res.status(500).json({
+      success: false,
+      error: "OCR preview failed"
+    });
+  }
+};
+var analyzePracticeSession = async (req, res) => {
+  try {
+    const { subject, grade, topic } = req.body;
+    const files = req.files;
+    if (!subject || !grade || !topic) {
+      return res.status(400).json({
+        success: false,
+        error: "Subject, grade, and topic are required"
+      });
+    }
+    if (!files?.ideal_content_file) {
+      return res.status(400).json({
+        success: false,
+        error: "Ideal content file is required"
+      });
+    }
+    if (!files?.student_responses_file) {
+      return res.status(400).json({
+        success: false,
+        error: "Student responses file is required"
+      });
+    }
+    const ocrResult = await forwardToOCRService(req, "/analyze-practice");
+    if (ocrResult) {
+      return res.json(ocrResult);
+    }
+    console.log("Using legacy PDF processing...");
+    let idealContent;
+    let studentResponses;
+    try {
+      const idealBuffer = files.ideal_content_file.tempFilePath ? fs.readFileSync(files.ideal_content_file.tempFilePath) : Buffer.from(files.ideal_content_file.data);
+      idealContent = await extractTextFromPDF(idealBuffer);
+      const studentBuffer = files.student_responses_file.tempFilePath ? fs.readFileSync(files.student_responses_file.tempFilePath) : Buffer.from(files.student_responses_file.data);
+      studentResponses = await extractTextFromPDF(studentBuffer);
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error: "Could not extract text from files. For image files, please ensure OCR service is running."
+      });
+    }
+    if (!idealContent.trim() || !studentResponses.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Uploaded files appear to be empty or unreadable"
+      });
+    }
+    const analysis = await analyzeChunkedContent(idealContent, studentResponses, subject, grade, topic);
+    if (files.ideal_content_file.tempFilePath) {
+      fs.unlinkSync(files.ideal_content_file.tempFilePath);
+    }
+    if (files.student_responses_file.tempFilePath) {
+      fs.unlinkSync(files.student_responses_file.tempFilePath);
+    }
+    const response = {
+      success: true,
+      overall_score: analysis.overall_score || 0,
+      total_marks: analysis.total_marks || 100,
+      question_analyses: analysis.question_analyses || [],
+      general_feedback: analysis.general_feedback || "Analysis completed using legacy processing."
+    };
+    res.json(response);
+  } catch (error) {
+    console.error("Practice analysis error:", error);
+    if (error instanceof Error && error.message.includes("API key")) {
+      return res.status(401).json({
+        success: false,
+        error: "OpenAI API key not configured or invalid"
+      });
+    }
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : "Analysis failed"
+    });
+  }
+};
+var analyzePracticeMultiImage = async (req, res) => {
+  try {
+    const { subject, grade, topic } = req.body;
+    const files = req.files;
+    if (!subject || !grade || !topic) {
+      return res.status(400).json({
+        success: false,
+        error: "Subject, grade, and topic are required"
+      });
+    }
+    if (!files?.ideal_content_file) {
+      return res.status(400).json({
+        success: false,
+        error: "Ideal content file is required"
+      });
+    }
+    if (!files?.student_responses_images) {
+      return res.status(400).json({
+        success: false,
+        error: "Student response images are required"
+      });
+    }
+    const images = Array.isArray(files.student_responses_images) ? files.student_responses_images : [files.student_responses_images];
+    const nonImageFiles = images.filter((img) => !img.mimetype.startsWith("image/"));
+    if (nonImageFiles.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: "All student response files must be images"
+      });
+    }
+    const ocrResult = await forwardToOCRService(req, "/analyze-practice-multi-image");
+    if (ocrResult) {
+      return res.json(ocrResult);
+    }
+    res.status(503).json({
+      success: false,
+      error: "OCR service is required for image processing but is currently unavailable. Please try again later or use PDF files."
+    });
+  } catch (error) {
+    console.error("Multi-image analysis error:", error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : "Multi-image analysis failed"
+    });
+  }
+};
 async function extractTextFromPDF(fileBuffer) {
   try {
     const text2 = fileBuffer.toString("utf8");
@@ -320,7 +500,7 @@ Analyze this section and provide JSON response:
   "strengths": ["<positive aspect>"]
 }`;
     try {
-      const response2 = await openai.chat.completions.create({
+      const response = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         // Using GPT-4O-mini for cost efficiency while maintaining quality
         messages: [
@@ -330,7 +510,7 @@ Analyze this section and provide JSON response:
         temperature: 0.3,
         max_tokens: 800
       });
-      const content = response2.choices[0].message.content || "{}";
+      const content = response.choices[0].message.content || "{}";
       const cleanedContent = content.replace(/^```json\s*/, "").replace(/\s*```$/, "").trim();
       try {
         const analysis = JSON.parse(cleanedContent);
@@ -388,78 +568,6 @@ Analyze this section and provide JSON response:
     general_feedback: `Analysis completed for ${questionAnalyses.length} sections. Overall performance: ${overallScore}%. Focus on addressing identified misconceptions and building on your strengths.`
   };
 }
-var analyzePracticeSession = async (req, res) => {
-  try {
-    const { subject, grade, topic } = req.body;
-    const files = req.files;
-    if (!files?.ideal_content_pdf || !files?.student_responses_pdf) {
-      return res.status(400).json({
-        success: false,
-        error: "Both ideal content and student responses PDF files are required"
-      });
-    }
-    if (!subject || !grade || !topic) {
-      return res.status(400).json({
-        success: false,
-        error: "Subject, grade, and topic are required"
-      });
-    }
-    let idealContent;
-    let studentResponses;
-    try {
-      const idealBuffer = files.ideal_content_pdf.tempFilePath ? fs.readFileSync(files.ideal_content_pdf.tempFilePath) : Buffer.from(files.ideal_content_pdf.data);
-      idealContent = await extractTextFromPDF(idealBuffer);
-      const studentBuffer = files.student_responses_pdf.tempFilePath ? fs.readFileSync(files.student_responses_pdf.tempFilePath) : Buffer.from(files.student_responses_pdf.data);
-      studentResponses = await extractTextFromPDF(studentBuffer);
-    } catch (error) {
-      return res.status(400).json({
-        success: false,
-        error: "Could not extract text from PDF files. Please ensure they are valid PDF documents with readable text."
-      });
-    }
-    if (!idealContent.trim() || !studentResponses.trim()) {
-      return res.status(400).json({
-        success: false,
-        error: "Uploaded files appear to be empty or unreadable"
-      });
-    }
-    const analysis = await analyzeChunkedContent(idealContent, studentResponses, subject, grade, topic);
-    if (files.ideal_content_pdf.tempFilePath) {
-      fs.unlinkSync(files.ideal_content_pdf.tempFilePath);
-    }
-    if (files.student_responses_pdf.tempFilePath) {
-      fs.unlinkSync(files.student_responses_pdf.tempFilePath);
-    }
-    const response2 = {
-      success: true,
-      overall_score: analysis.overall_score || 0,
-      total_marks: analysis.total_marks || 100,
-      question_analyses: analysis.question_analyses || [],
-      general_feedback: analysis.general_feedback || "Analysis completed."
-    };
-    res.json(response2);
-  } catch (error) {
-    console.error("Practice analysis error:", error);
-    if (error instanceof Error && error.message.includes("API key")) {
-      return res.status(401).json({
-        success: false,
-        error: "OpenAI API key not configured or invalid"
-      });
-    }
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : "Analysis failed"
-    });
-  }
-};
-var getPracticeConfigOptions = async (req, res) => {
-  res.json({
-    subjects: ["Mathematics", "Science", "English", "Social Studies", "Hindi", "Physics", "Chemistry", "Biology"],
-    grades: ["6", "7", "8", "9", "10", "11", "12"],
-    analysis_types: ["detailed", "quick", "conceptual"],
-    supported_formats: ["PDF"]
-  });
-};
 
 // server/aiTutorRoutes.ts
 import OpenAI2 from "openai";
@@ -634,14 +742,14 @@ function processContentSources(sources) {
 }
 async function callOpenAI(messages, temperature = 0.7) {
   try {
-    const response2 = await openai2.chat.completions.create({
+    const response = await openai2.chat.completions.create({
       model: "gpt-4o-mini",
       // Using GPT-4O-mini for cost efficiency while maintaining quality
       messages,
       temperature,
       max_tokens: 2e3
     });
-    return response2.choices[0].message.content || "";
+    return response.choices[0].message.content || "";
   } catch (error) {
     console.error("OpenAI API error:", error);
     throw new Error(`OpenAI API error: ${error}`);
@@ -787,9 +895,9 @@ Format as JSON with this structure:
       { role: "system", content: examPrompt },
       { role: "user", content: userMessage }
     ];
-    const response2 = await callOpenAI(messages, 0.5);
+    const response = await callOpenAI(messages, 0.5);
     try {
-      let cleanedResponse = response2.trim();
+      let cleanedResponse = response.trim();
       if (cleanedResponse.startsWith("```json")) {
         cleanedResponse = cleanedResponse.slice(7, -3);
       } else if (cleanedResponse.startsWith("```")) {
@@ -864,12 +972,12 @@ Use this content to inform your responses, but keep them conversational and appr
       role: "user",
       content: current_question
     });
-    const response2 = await callOpenAI(conversationMessages, 0.8);
+    const response = await callOpenAI(conversationMessages, 0.8);
     const suggestionPrompt = `
 Based on this tutoring conversation about ${subject} for a ${student_grade} student:
 
 STUDENT QUESTION: ${current_question}
-TUTOR RESPONSE: ${response2}
+TUTOR RESPONSE: ${response}
 
 Generate 3 helpful follow-up suggestions or questions the student might want to ask next.
 Return as JSON array: ["suggestion1", "suggestion2", "suggestion3"]
@@ -887,14 +995,14 @@ Return as JSON array: ["suggestion1", "suggestion2", "suggestion3"]
       const suggestions = JSON.parse(cleanedSuggestions);
       return res.json({
         success: true,
-        response: response2,
+        response,
         suggestions,
         follow_up_questions: suggestions
       });
     } catch (parseError) {
       return res.json({
         success: true,
-        response: response2,
+        response,
         suggestions: [
           "Can you explain this with an example?",
           "What are the key points I should remember?",
@@ -993,7 +1101,7 @@ ${sanitizeInput(doubt)}
 **Type of Help Needed:** ${sanitizeInput(resolution_type)}
 
 Please provide a comprehensive solution to help resolve this student's doubt.`;
-    const response2 = await openai3.chat.completions.create({
+    const response = await openai3.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: systemPrompt },
@@ -1002,7 +1110,7 @@ Please provide a comprehensive solution to help resolve this student's doubt.`;
       temperature: 0.3,
       max_tokens: 2500
     });
-    const answer = response2.choices[0].message.content;
+    const answer = response.choices[0].message.content;
     res.json({
       success: true,
       answer,
@@ -1035,7 +1143,7 @@ import { drizzle } from "drizzle-orm/neon-http";
 import { neon } from "@neondatabase/serverless";
 
 // shared/schema.ts
-import { pgTable, text, serial, integer, timestamp, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, varchar } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 var users = pgTable("users", {
   id: varchar("id").primaryKey(),
@@ -1054,7 +1162,7 @@ var users = pgTable("users", {
 });
 var student_profiles = pgTable("student_profiles", {
   id: serial("id").primaryKey(),
-  user_id: integer("user_id").references(() => users.id).notNull(),
+  user_id: varchar("user_id").references(() => users.id).notNull(),
   grade_level: varchar("grade_level", { length: 10 }),
   section: varchar("section", { length: 10 }),
   roll_number: varchar("roll_number", { length: 20 }),
@@ -1064,7 +1172,7 @@ var student_profiles = pgTable("student_profiles", {
 });
 var teacher_profiles = pgTable("teacher_profiles", {
   id: serial("id").primaryKey(),
-  user_id: integer("user_id").references(() => users.id).notNull(),
+  user_id: varchar("user_id").references(() => users.id).notNull(),
   employee_id: varchar("employee_id", { length: 50 }),
   subjects: text("subjects").array(),
   // Array of subjects they teach
@@ -1096,7 +1204,9 @@ var sql = neon(process.env.DATABASE_URL);
 var db = drizzle(sql);
 var DatabaseStorage = class {
   async createUser(user) {
-    const [newUser] = await db.insert(users).values(user).returning();
+    const userId = user.auth0_id ? `user_${user.auth0_id.replace(/[^a-zA-Z0-9]/g, "_")}` : `user_${Date.now()}`;
+    const userWithId = { ...user, id: userId };
+    const [newUser] = await db.insert(users).values(userWithId).returning();
     return newUser;
   }
   async getUserByAuth0Id(auth0Id) {
@@ -1168,7 +1278,10 @@ router2.post("/auth0-webhook", async (req, res) => {
           auth0_id: auth0Id,
           email,
           name,
-          role
+          role,
+          roles: [role],
+          first_name: name.split(" ")[0],
+          last_name: name.split(" ").slice(1).join(" ") || null
         });
         if (role === "student") {
           await storage.createStudentProfile({
@@ -1210,29 +1323,82 @@ router2.get("/profile", async (req, res) => {
     console.log("Token email:", decoded?.email);
     if (!decoded || !decoded.sub) {
       console.log("Invalid token format");
-      return res.status(401).json({ error: "Invalid token" });
+      return res.status(401).json({ error: "Invalid token format" });
     }
     const auth0Id = decoded.sub;
-    const email = decoded.email || "unknown@example.com";
-    const name = decoded.name || decoded.nickname || email.split("@")[0];
-    console.log("Creating user response for Auth0 user:", email);
-    const roleParam = req.query.role;
-    const userRole = roleParam === "teacher" ? "teacher" : "student";
-    res.json({
-      user: {
-        id: `auth0_${auth0Id.replace(/[^a-zA-Z0-9]/g, "_")}`,
-        auth0_id: auth0Id,
-        email,
-        name,
-        role: userRole,
-        created_at: (/* @__PURE__ */ new Date()).toISOString(),
-        updated_at: (/* @__PURE__ */ new Date()).toISOString()
-      },
-      profile: void 0
-    });
+    const email = decoded.email || `user_${auth0Id.replace(/[^a-zA-Z0-9]/g, "_")}@unknown.local`;
+    const name = decoded.name || decoded.nickname || `User_${auth0Id.split("|").pop()}`;
+    console.log("Looking up user for Auth0 ID:", auth0Id);
+    let userWithProfile = await storage.getUserWithProfile(auth0Id);
+    if (!userWithProfile) {
+      console.log("User not found, creating new user:", email);
+      const roleParam = req.query.role;
+      const userRole = roleParam === "teacher" ? "teacher" : "student";
+      try {
+        const newUser = await storage.createUser({
+          auth0_id: auth0Id,
+          email,
+          name,
+          role: userRole,
+          roles: [userRole],
+          // Add to roles array as well
+          first_name: name.split(" ")[0],
+          last_name: name.split(" ").slice(1).join(" ") || null
+        });
+        let profile = void 0;
+        if (userRole === "student") {
+          profile = await storage.createStudentProfile({
+            user_id: newUser.id,
+            grade_level: "10",
+            section: "A",
+            subjects: ["Mathematics", "Science", "English"]
+          });
+        } else if (userRole === "teacher") {
+          profile = await storage.createTeacherProfile({
+            user_id: newUser.id,
+            subjects: ["Mathematics"],
+            grades: ["10"],
+            department: "Science"
+          });
+        }
+        userWithProfile = { user: newUser, profile };
+        console.log(`Created new ${userRole} user:`, email);
+      } catch (createError) {
+        console.error("Error creating user:", createError);
+        userWithProfile = await storage.getUserWithProfile(auth0Id);
+        if (!userWithProfile) {
+          throw createError;
+        }
+      }
+    }
+    res.json(userWithProfile);
   } catch (error) {
-    console.error("Error in profile route:", error.message);
-    res.status(500).json({ error: "Internal server error" });
+    console.error("Error fetching user profile:", error);
+    if (error?.message?.includes("endpoint is disabled")) {
+      const authHeader = req.headers.authorization;
+      let decoded = null;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        decoded = jwt.decode(authHeader.substring(7));
+      }
+      const sub = decoded?.sub || "unknown";
+      const email = decoded?.email || `user_${sub.replace(/[^a-zA-Z0-9]/g, "_")}@demo.local`;
+      const name = decoded?.name || decoded?.nickname || email.split("@")[0];
+      const roleParam = req.query.role || "student";
+      return res.json({
+        user: {
+          id: sub,
+          auth0_id: sub,
+          email,
+          name,
+          role: roleParam,
+          roles: [roleParam],
+          created_at: (/* @__PURE__ */ new Date()).toISOString(),
+          updated_at: (/* @__PURE__ */ new Date()).toISOString()
+        },
+        profile: null
+      });
+    }
+    res.status(500).json({ error: "Failed to fetch user profile" });
   }
 });
 router2.put("/profile", async (req, res) => {
@@ -1265,6 +1431,33 @@ var authRoutes_default = router2;
 
 // server/authMiddleware.ts
 import jwt2 from "jsonwebtoken";
+import jwksClient from "jwks-rsa";
+var client = jwksClient({
+  jwksUri: `https://${process.env.AUTH0_DOMAIN || "your-domain.auth0.com"}/.well-known/jwks.json`,
+  requestHeaders: {},
+  // Optional
+  timeout: 3e4,
+  // Defaults to 30s
+  cache: true,
+  // Default value
+  rateLimit: true,
+  jwksRequestsPerMinute: 5,
+  // Default value
+  cacheMaxEntries: 5,
+  // Default value
+  cacheMaxAge: 6e5
+  // Defaults to 10m
+});
+var getKey = (header, callback) => {
+  client.getSigningKey(header.kid, (err, key) => {
+    if (err) {
+      console.error("Error getting signing key:", err);
+      return callback(err);
+    }
+    const signingKey = key?.getPublicKey();
+    callback(null, signingKey);
+  });
+};
 var verifyToken = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -1272,14 +1465,35 @@ var verifyToken = async (req, res, next) => {
       return res.status(401).json({ error: "No token provided" });
     }
     const token = authHeader.substring(7);
-    const decoded = jwt2.decode(token);
-    if (!decoded || !decoded.sub) {
-      return res.status(401).json({ error: "Invalid token format" });
+    const audience = process.env.AUTH0_AUDIENCE || "your-api-identifier";
+    const issuer = `https://${process.env.AUTH0_DOMAIN || "your-domain.auth0.com"}/`;
+    if (process.env.NODE_ENV === "development") {
+      const decoded = jwt2.decode(token);
+      if (!decoded || !decoded.sub) {
+        return res.status(401).json({ error: "Invalid token format" });
+      }
+      req.auth = {
+        sub: decoded.sub
+      };
+      return next();
     }
-    req.auth = {
-      sub: decoded.sub
-    };
-    next();
+    jwt2.verify(token, getKey, {
+      audience,
+      issuer,
+      algorithms: ["RS256"]
+    }, (err, decoded) => {
+      if (err) {
+        console.error("JWT verification error:", err);
+        return res.status(401).json({ error: "Invalid token" });
+      }
+      if (!decoded || !decoded.sub) {
+        return res.status(401).json({ error: "Invalid token format" });
+      }
+      req.auth = {
+        sub: decoded.sub
+      };
+      next();
+    });
   } catch (error) {
     console.error("Token verification error:", error);
     res.status(401).json({ error: "Invalid token" });
@@ -1303,13 +1517,12 @@ var requireAuth = requireRole(["student", "teacher"]);
 // server/routes.ts
 async function registerRoutes(app2) {
   app2.use("/api/auth", authRoutes_default);
-  app2.get("/api/config-options", getConfigOptions);
-  app2.get("/api/lesson-config-options", getLessonConfigOptions);
-  app2.get("/api/practice-config-options", getPracticeConfigOptions);
   app2.use("/api/protected", verifyToken);
   app2.post("/api/protected/generate-exam", requireTeacher, generateExamPaper);
   app2.post("/api/protected/generate-lesson", requireTeacher, generateLesson);
   app2.post("/api/protected/analyze-practice", requireStudent, analyzePracticeSession);
+  app2.post("/api/protected/analyze-practice-multi-image", requireStudent, analyzePracticeMultiImage);
+  app2.post("/api/protected/ocr-preview", requireStudent, previewOCR);
   app2.use("/api/protected", requireAuth, doubtRoutes_default);
   app2.post("/api/protected/ai-tutor/teach", requireAuth, teachContent);
   app2.post("/api/protected/ai-tutor/generate-exam", requireAuth, generateExam);
@@ -1318,6 +1531,8 @@ async function registerRoutes(app2) {
   app2.post("/api/generate-lesson", generateLesson);
   app2.use("/api", doubtRoutes_default);
   app2.post("/api/analyze-practice", analyzePracticeSession);
+  app2.post("/api/analyze-practice-multi-image", analyzePracticeMultiImage);
+  app2.post("/api/ocr-preview", previewOCR);
   app2.post("/api/ai-tutor/teach", teachContent);
   app2.post("/api/ai-tutor/generate-exam", generateExam);
   app2.post("/api/ai-tutor/chat", chatWithTutor);
@@ -1428,6 +1643,7 @@ function serveStatic(app2) {
 }
 
 // server/index.ts
+import { createProxyMiddleware } from "http-proxy-middleware";
 var app = express2();
 app.use(express2.json({ limit: "50mb" }));
 app.use(express2.urlencoded({ extended: false, limit: "50mb" }));
@@ -1469,6 +1685,23 @@ app.use((req, res, next) => {
     res.status(status).json({ message });
     throw err;
   });
+  app.use("/api", createProxyMiddleware({
+    target: "http://localhost:8001",
+    // FastAPI server
+    changeOrigin: true,
+    logLevel: "debug",
+    // no pathRewrite needed
+    onProxyReq: (proxyReq, req, res) => {
+      log(`\u{1F500} Proxying ${req.method} ${req.path} to FastAPI`);
+    },
+    onProxyRes: (proxyRes, req, res) => {
+      log(`\u2705 FastAPI response: ${proxyRes.statusCode} for ${req.method} ${req.path}`);
+    },
+    onError: (err, req, res) => {
+      log(`\u274C Proxy error for ${req.method} ${req.path}: ${err.message}`);
+      res.status(500).json({ error: "Proxy error", details: err.message });
+    }
+  }));
   if (app.get("env") === "development") {
     await setupVite(app, server);
   } else {
@@ -1477,8 +1710,7 @@ app.use((req, res, next) => {
   const port = 3e3;
   server.listen({
     port,
-    host: "0.0.0.0",
-    reusePort: true
+    host: "0.0.0.0"
   }, () => {
     log(`serving on port ${port}`);
   });
