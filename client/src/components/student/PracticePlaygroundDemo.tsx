@@ -30,6 +30,7 @@ import {
   Plus
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth0 } from '@auth0/auth0-react';
 
 interface QuestionAnalysis {
   question_number: number;
@@ -81,6 +82,7 @@ const PracticePlaygroundDemo = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [currentTab, setCurrentTab] = useState<'setup' | 'results'>('setup');
   const { toast } = useToast();
+  const { user, isAuthenticated, getAccessTokenSilently } = useAuth0();
 
   const subjects = ["Mathematics", "Science", "English", "Social Studies", "Hindi", "Physics", "Chemistry", "Biology"];
   const grades = ["6", "7", "8", "9", "10", "11", "12"];
@@ -218,6 +220,54 @@ const PracticePlaygroundDemo = () => {
     setStudentResponsesImages(prev => prev.filter((_, i) => i !== index));
   };
 
+  const savePracticeAnalysisToDatabase = async (analysisResult: PracticeAnalysis) => {
+    // Only save if user is authenticated and is a teacher
+    if (!isAuthenticated || !user?.roles?.includes('teacher')) return;
+    
+    try {
+      const token = await getAccessTokenSilently();
+      
+      const response = await fetch('/api/teacher-content/save-practice-analysis', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          title: `Practice Analysis - ${config.subject} ${config.topic}`,
+          description: `Grade ${config.grade} practice analysis`,
+          input_parameters: {
+            ...config,
+            inputMode,
+            uploadMode
+          },
+          generated_content: JSON.stringify(analysisResult),
+          metadata: {
+            overall_score: analysisResult.overall_score,
+            total_marks: analysisResult.total_marks,
+            question_count: analysisResult.question_analyses?.length || 0
+          },
+          practice_config: config,
+          student_responses: studentResponses || 'File upload',
+          ideal_answers: idealContent || 'File upload',
+          analysis_results: analysisResult,
+          score_awarded: Math.round((analysisResult.overall_score! / 100) * analysisResult.total_marks!),
+          total_marks: analysisResult.total_marks!,
+          misconceptions_identified: analysisResult.question_analyses?.flatMap(qa => qa.misconceptions) || [],
+          improvement_suggestions: analysisResult.question_analyses?.map(qa => qa.improvement_suggestions) || []
+        })
+      });
+
+      if (response.ok) {
+        console.log('Practice analysis saved to database successfully');
+      } else {
+        console.error('Failed to save practice analysis to database');
+      }
+    } catch (error) {
+      console.error('Error saving practice analysis to database:', error);
+    }
+  };
+
   const analyzeResponses = async () => {
     if (inputMode === 'text') {
       // Text mode validation
@@ -275,6 +325,7 @@ const PracticePlaygroundDemo = () => {
       formData.append('subject', config.subject);
       formData.append('grade', config.grade);
       formData.append('topic', config.topic);
+      formData.append('comparison_mode', 'true'); // Enable comparison mode
 
       let endpoint = '/api/analyze-practice';
 
@@ -320,6 +371,12 @@ const PracticePlaygroundDemo = () => {
 
       if (result.success) {
         console.log('Analysis successful, switching to results tab');
+        
+        // Save to database if user is a teacher
+        if (user?.roles?.includes('teacher')) {
+          await savePracticeAnalysisToDatabase(result);
+        }
+        
         toast({
           title: "Analysis Complete",
           description: "Your practice session has been analyzed successfully.",
@@ -399,14 +456,14 @@ const PracticePlaygroundDemo = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <PlayCircle className="w-6 h-6 text-blue-600" />
-            AI Practice Playground
+            AI Practice Playground - Answer Comparison & Grading
             <Badge variant="secondary" className="ml-2">
               <Camera className="w-3 h-3 mr-1" />
               OCR Enabled
             </Badge>
           </CardTitle>
           <CardDescription>
-            Enter your content directly or upload files (including handwritten images) to get detailed CBSE-style feedback with marking schemes and improvement suggestions.
+            Compare student answers against correct solutions for detailed grading and feedback. Upload the correct/ideal answer first, then the student's work to evaluate.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -498,29 +555,29 @@ const PracticePlaygroundDemo = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label>Ideal Answers/Reference Content *</Label>
-                    <p className="text-sm text-gray-600">Enter the ideal answers or reference material</p>
+                    <Label className="text-green-700 font-semibold">✓ Correct Answer / Model Solution *</Label>
+                    <p className="text-sm text-gray-600">Enter the correct solution that will be used as reference</p>
                   </div>
                   <Textarea
-                    placeholder="Paste your ideal answers or reference content here..."
+                    placeholder="Paste the correct answer or model solution here..."
                     value={idealContent}
                     onChange={(e) => setIdealContent(e.target.value)}
                     rows={10}
-                    className="min-h-[200px]"
+                    className="min-h-[200px] border-green-200 focus:border-green-400"
                   />
                 </div>
 
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label>Student Responses *</Label>
-                    <p className="text-sm text-gray-600">Enter your practice responses</p>
+                    <Label className="text-blue-700 font-semibold">📝 Student's Answer to Evaluate *</Label>
+                    <p className="text-sm text-gray-600">Enter the student's work that needs to be graded</p>
                   </div>
                   <Textarea
-                    placeholder="Paste your student responses here..."
+                    placeholder="Paste the student's answer to be evaluated here..."
                     value={studentResponses}
                     onChange={(e) => setStudentResponses(e.target.value)}
                     rows={10}
-                    className="min-h-[200px]"
+                    className="min-h-[200px] border-blue-200 focus:border-blue-400"
                   />
                   </div>
                 </div>
@@ -559,26 +616,27 @@ const PracticePlaygroundDemo = () => {
                     {/* Ideal Content Upload */}
                     <div className="space-y-4">
                       <div className="space-y-2">
-                        <Label>Ideal Answers/Reference Content *</Label>
+                        <Label className="text-green-700 font-semibold">✓ Correct Answer / Model Solution *</Label>
                         <p className="text-sm text-gray-600">
-                          Upload PDF or image file containing ideal answers/reference content
+                          Upload the correct solution that will be used as reference for grading
                         </p>
                       </div>
-                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                      <div className="border-2 border-dashed border-green-300 rounded-lg p-6 text-center bg-green-50">
                         <div className="flex justify-center mb-4">
                           {idealContentFile && isImageFile(idealContentFile) ? (
-                            <Camera className="h-12 w-12 text-blue-400" />
+                            <Camera className="h-12 w-12 text-green-600" />
                           ) : (
-                            <FileText className="h-12 w-12 text-gray-400" />
+                            <FileText className="h-12 w-12 text-green-600" />
                           )}
                         </div>
                         <div className="space-y-2">
                           <Button
                             variant="outline"
+                            className="border-green-600 text-green-700 hover:bg-green-100"
                             onClick={() => document.getElementById('ideal-content-upload')?.click()}
                           >
                             <Upload className="w-4 h-4 mr-2" />
-                            Upload Ideal Content
+                            Upload Correct Answer
                           </Button>
                           <input
                             id="ideal-content-upload"
@@ -620,31 +678,32 @@ const PracticePlaygroundDemo = () => {
                     {/* Student Responses Upload */}
                     <div className="space-y-4">
                       <div className="space-y-2">
-                        <Label>Student Responses *</Label>
+                        <Label className="text-blue-700 font-semibold">📝 Student's Answer to Evaluate *</Label>
                         <p className="text-sm text-gray-600">
                           {uploadMode === 'single' 
-                            ? 'Upload PDF or image file containing your practice responses'
-                            : 'Upload multiple images of your handwritten responses'
+                            ? 'Upload the student\'s work that needs to be graded'
+                            : 'Upload multiple images of the student\'s handwritten work'
                           }
                         </p>
                       </div>
                       
                       {uploadMode === 'single' ? (
-                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                        <div className="border-2 border-dashed border-blue-300 rounded-lg p-6 text-center bg-blue-50">
                           <div className="flex justify-center mb-4">
                             {studentResponsesFile && isImageFile(studentResponsesFile) ? (
-                              <Camera className="h-12 w-12 text-blue-400" />
+                              <Camera className="h-12 w-12 text-blue-600" />
                             ) : (
-                              <FileText className="h-12 w-12 text-gray-400" />
+                              <FileText className="h-12 w-12 text-blue-600" />
                             )}
                           </div>
                           <div className="space-y-2">
                             <Button
                               variant="outline"
+                              className="border-blue-600 text-blue-700 hover:bg-blue-100"
                               onClick={() => document.getElementById('student-responses-upload')?.click()}
                             >
                               <Upload className="w-4 h-4 mr-2" />
-                              Upload Your Responses
+                              Upload Student's Answer
                             </Button>
                             <input
                               id="student-responses-upload"
@@ -793,7 +852,7 @@ const PracticePlaygroundDemo = () => {
                   ) : (
                     <>
                       <Brain className="w-4 h-4 mr-2" />
-                      Analyze Practice Session
+                      Compare & Grade Answer
                     </>
                   )}
                 </Button>
@@ -903,28 +962,72 @@ const PracticePlaygroundDemo = () => {
                 </Card>
               )}
 
-              {/* Section Analysis */}
-              <div className="space-y-4">
-                {analysis.question_analyses?.map((qa: any, index: number) => (
-                  <Card key={index}>
-                    <CardHeader>
-                      <CardTitle className="flex items-center justify-between">
-                        <span>Section {qa.question_number}</span>
-                        <Badge variant={qa.marks_awarded === qa.total_marks ? "default" : qa.marks_awarded > qa.total_marks / 2 ? "secondary" : "destructive"}>
-                          {qa.marks_awarded}/{qa.total_marks} marks
-                        </Badge>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div>
-                        <h4 className="font-semibold text-gray-700 mb-2">Marking Scheme:</h4>
-                        <p className="text-sm text-gray-600">
-                          {typeof qa.marking_scheme === 'string' 
-                            ? qa.marking_scheme 
-                            : JSON.stringify(qa.marking_scheme, null, 2)
-                          }
-                        </p>
-                      </div>
+              {/* Comparative Analysis */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Target className="w-6 h-6 text-purple-600" />
+                    Comparative Analysis: Student Answer vs Correct Solution
+                  </CardTitle>
+                  <CardDescription>
+                    Detailed comparison showing how the student's answer differs from the correct solution
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* If we have multiple questions, show them separately */}
+                  {analysis.question_analyses && analysis.question_analyses.length > 0 ? (
+                    analysis.question_analyses.map((qa: any, index: number) => (
+                      <div key={index} className="border rounded-lg p-4 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h3 className="font-semibold text-lg">
+                            {analysis.question_analyses!.length > 1 ? `Question ${qa.question_number}` : 'Analysis'}
+                          </h3>
+                          <Badge variant={qa.marks_awarded === qa.total_marks ? "default" : qa.marks_awarded > qa.total_marks / 2 ? "secondary" : "destructive"}>
+                            {qa.marks_awarded}/{qa.total_marks} marks
+                          </Badge>
+                        </div>
+
+                        {/* Question Text if available */}
+                        {qa.question_text && (
+                          <div>
+                            <h4 className="font-semibold text-gray-700 mb-2">Question:</h4>
+                            <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded">{qa.question_text}</p>
+                          </div>
+                        )}
+
+                        {/* Correct Answer */}
+                        {qa.ideal_answer && (
+                          <div>
+                            <h4 className="font-semibold text-green-700 mb-2 flex items-center gap-2">
+                              <CheckCircle2 className="w-4 h-4" />
+                              Correct Answer:
+                            </h4>
+                            <div className="text-sm text-gray-600 bg-green-50 p-3 rounded border border-green-200">
+                              {qa.ideal_answer}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Student's Answer */}
+                        {qa.student_answer && (
+                          <div>
+                            <h4 className="font-semibold text-blue-700 mb-2">Student's Answer:</h4>
+                            <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded border border-blue-200">
+                              {qa.student_answer}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Marking Scheme */}
+                        <div>
+                          <h4 className="font-semibold text-gray-700 mb-2">Marking Breakdown:</h4>
+                          <p className="text-sm text-gray-600">
+                            {typeof qa.marking_scheme === 'string' 
+                              ? qa.marking_scheme 
+                              : JSON.stringify(qa.marking_scheme, null, 2)
+                            }
+                          </p>
+                        </div>
 
                       {qa.strengths && qa.strengths.length > 0 && (
                         <div>
@@ -960,22 +1063,30 @@ const PracticePlaygroundDemo = () => {
                         </div>
                       )}
 
-                      <div>
-                        <h4 className="font-semibold text-blue-700 mb-2 flex items-center gap-2">
-                          <Target className="w-4 h-4" />
-                          Improvement Suggestions:
-                        </h4>
-                        <p className="text-sm text-blue-600">
-                          {typeof qa.improvement_suggestions === 'string' 
-                            ? qa.improvement_suggestions 
-                            : JSON.stringify(qa.improvement_suggestions, null, 2)
-                          }
-                        </p>
+                        {/* Improvement Suggestions */}
+                        <div>
+                          <h4 className="font-semibold text-blue-700 mb-2 flex items-center gap-2">
+                            <Target className="w-4 h-4" />
+                            Improvement Suggestions:
+                          </h4>
+                          <p className="text-sm text-blue-600">
+                            {typeof qa.improvement_suggestions === 'string' 
+                              ? qa.improvement_suggestions 
+                              : JSON.stringify(qa.improvement_suggestions, null, 2)
+                            }
+                          </p>
+                        </div>
                       </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                    ))
+                  ) : (
+                    <Alert>
+                      <AlertDescription>
+                        No detailed analysis available. Please ensure both correct answer and student answer are provided.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </CardContent>
+              </Card>
             </>
           ) : analysis ? (
             <Card>

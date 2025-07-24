@@ -109,6 +109,8 @@ export const attachUser = async (req: Request, res: Response, next: NextFunction
     if (user) {
       req.auth.role = user.role;
       req.auth.user = user;
+      // Also set userId for compatibility
+      (req as any).user = { userId: user.id };
     }
     
     next();

@@ -12,7 +12,8 @@ import {
 import { teachContent, generateExam, chatWithTutor } from "./aiTutorRoutes";
 import doubtRoutes from "./doubtRoutes";
 import authRoutes from "./authRoutes";
-import { verifyToken, requireStudent, requireTeacher, requireAuth } from "./authMiddleware";
+import teacherContentRoutes from "./teacherContentRoutes";
+import { verifyToken, requireStudent, requireTeacher, requireAuth, attachUser } from "./authMiddleware";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes (no authentication required)
@@ -29,6 +30,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Teacher-only routes
   app.post('/api/protected/generate-exam', requireTeacher, generateExamPaper);
   app.post('/api/protected/generate-lesson', requireTeacher, generateLesson);
+  
+  // Teacher content management routes - need both token verification and user attachment
+  app.use('/api/protected/teacher-content', attachUser, teacherContentRoutes);
 
   // Student-only routes  
   app.post('/api/protected/analyze-practice', requireStudent, analyzePracticeSession);
@@ -51,6 +55,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/ai-tutor/teach', teachContent);
   app.post('/api/ai-tutor/generate-exam', generateExam);
   app.post('/api/ai-tutor/chat', chatWithTutor);
+  
+  // Teacher content management routes - backward compatibility
+  app.use('/api/teacher-content', teacherContentRoutes);
 
   const httpServer = createServer(app);
 

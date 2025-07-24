@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -14,6 +14,8 @@ import { ScheduleAttendance } from '@/components/teacher/ScheduleAttendance';
 import { TeacherQuickActions } from '@/components/teacher/TeacherQuickActions';
 import { AIExamGenerator } from '@/components/teacher/AIExamGenerator';
 import { DocumentStateProvider } from '@/contexts/DocumentStateContext';
+import PracticePlaygroundDemo from '@/components/student/PracticePlaygroundDemo';
+import { SavedContent } from '@/components/teacher/SavedContent';
 import { 
   BookOpen, 
   Users, 
@@ -24,11 +26,13 @@ import {
   Bell,
   Clock,
   CheckSquare,
-  Wand2
+  Wand2,
+  Target,
+  Save
 } from 'lucide-react';
 
 const TeacherDashboard = () => {
-  const [activeTab, setActiveTab] = useState('lecture');
+  const [activeTab, setActiveTab] = useState('practice');
   const [notifications] = useState([
     { id: 1, type: 'doubt', message: 'New doubt from Sarah in Math', time: '2 min ago' },
     { id: 2, type: 'assignment', message: 'Assignment submissions due today', time: '1 hour ago' },
@@ -84,7 +88,7 @@ const TeacherDashboard = () => {
           {/* Main Content Area */}
           <div className="lg:col-span-2">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-              <TabsList className="grid w-full grid-cols-7 bg-white shadow-sm">
+              <TabsList className="grid w-full grid-cols-9 bg-white shadow-sm">
                 <TabsTrigger value="lecture" className="flex items-center space-x-2">
                   <BookOpen className="w-4 h-4" />
                   <span className="hidden md:inline">Lecture</span>
@@ -105,6 +109,10 @@ const TeacherDashboard = () => {
                   <Wand2 className="w-4 h-4" />
                   <span className="hidden md:inline">AI Exam</span>
                 </TabsTrigger>
+                <TabsTrigger value="practice" className="flex items-center space-x-2">
+                  <Target className="w-4 h-4" />
+                  <span className="hidden md:inline">Practice</span>
+                </TabsTrigger>
                 <TabsTrigger value="analytics" className="flex items-center space-x-2">
                   <BarChart3 className="w-4 h-4" />
                   <span className="hidden md:inline">Analytics</span>
@@ -112,6 +120,10 @@ const TeacherDashboard = () => {
                 <TabsTrigger value="schedule" className="flex items-center space-x-2">
                   <Calendar className="w-4 h-4" />
                   <span className="hidden md:inline">Schedule</span>
+                </TabsTrigger>
+                <TabsTrigger value="saved" className="flex items-center space-x-2">
+                  <Save className="w-4 h-4" />
+                  <span className="hidden md:inline">Saved</span>
                 </TabsTrigger>
               </TabsList>
 
@@ -135,12 +147,33 @@ const TeacherDashboard = () => {
                 <AIExamGenerator />
               </TabsContent>
               
+              <TabsContent value="practice">
+                <div className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center space-x-2">
+                        <Target className="w-5 h-5" />
+                        <span>Practice Playground</span>
+                      </CardTitle>
+                      <CardDescription>
+                        Analyze student practice responses and provide detailed feedback. Upload ideal answers and student responses to get AI-powered analysis.
+                      </CardDescription>
+                    </CardHeader>
+                  </Card>
+                  <PracticePlaygroundDemo />
+                </div>
+              </TabsContent>
+              
               <TabsContent value="analytics">
                 <StudentAnalytics />
               </TabsContent>
               
               <TabsContent value="schedule">
                 <ScheduleAttendance />
+              </TabsContent>
+              
+              <TabsContent value="saved">
+                <SavedContent />
               </TabsContent>
             </Tabs>
           </div>

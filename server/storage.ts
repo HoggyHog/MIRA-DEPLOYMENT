@@ -4,14 +4,26 @@ import {
   users, 
   student_profiles, 
   teacher_profiles,
+  content_generations,
+  generated_exams,
+  generated_lessons,
+  practice_analyses,
   type User, 
   type InsertUser,
   type StudentProfile,
   type InsertStudentProfile,
   type TeacherProfile,
-  type InsertTeacherProfile
+  type InsertTeacherProfile,
+  type ContentGeneration,
+  type InsertContentGeneration,
+  type GeneratedExam,
+  type InsertGeneratedExam,
+  type GeneratedLesson,
+  type InsertGeneratedLesson,
+  type PracticeAnalysis,
+  type InsertPracticeAnalysis
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL must be set. Did you forget to provision a database?");
@@ -39,6 +51,25 @@ export interface IStorage {
   
   // User with profile data
   getUserWithProfile(auth0Id: string): Promise<{ user: User; profile: StudentProfile | TeacherProfile | undefined } | undefined>;
+  
+  // Content generation management
+  createContentGeneration(content: InsertContentGeneration): Promise<ContentGeneration>;
+  getContentGenerationsByUser(userId: string, contentType?: string): Promise<ContentGeneration[]>;
+  getContentGenerationById(id: number): Promise<ContentGeneration | undefined>;
+  updateContentGeneration(id: number, updates: Partial<InsertContentGeneration>): Promise<ContentGeneration | undefined>;
+  deleteContentGeneration(id: number): Promise<boolean>;
+  
+  // Exam management
+  createGeneratedExam(exam: InsertGeneratedExam): Promise<GeneratedExam>;
+  getGeneratedExamByContentId(contentGenerationId: number): Promise<GeneratedExam | undefined>;
+  
+  // Lesson management
+  createGeneratedLesson(lesson: InsertGeneratedLesson): Promise<GeneratedLesson>;
+  getGeneratedLessonByContentId(contentGenerationId: number): Promise<GeneratedLesson | undefined>;
+  
+  // Practice analysis management
+  createPracticeAnalysis(analysis: InsertPracticeAnalysis): Promise<PracticeAnalysis>;
+  getPracticeAnalysisByContentId(contentGenerationId: number): Promise<PracticeAnalysis | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -111,6 +142,85 @@ export class DatabaseStorage implements IStorage {
     }
 
     return { user, profile };
+  }
+
+  // Content generation methods
+  async createContentGeneration(content: InsertContentGeneration): Promise<ContentGeneration> {
+    const [newContent] = await db.insert(content_generations).values(content).returning();
+    return newContent;
+  }
+
+  async getContentGenerationsByUser(userId: string, contentType?: string): Promise<ContentGeneration[]> {
+    if (contentType) {
+      return await db.select()
+        .from(content_generations)
+        .where(and(eq(content_generations.user_id, userId), eq(content_generations.content_type, contentType)))
+        .orderBy(desc(content_generations.created_at));
+    }
+    return await db.select()
+      .from(content_generations)
+      .where(eq(content_generations.user_id, userId))
+      .orderBy(desc(content_generations.created_at));
+  }
+
+  async getContentGenerationById(id: number): Promise<ContentGeneration | undefined> {
+    const [content] = await db.select()
+      .from(content_generations)
+      .where(eq(content_generations.id, id));
+    return content;
+  }
+
+  async updateContentGeneration(id: number, updates: Partial<InsertContentGeneration>): Promise<ContentGeneration | undefined> {
+    const [updated] = await db.update(content_generations)
+      .set({ ...updates, updated_at: new Date() })
+      .where(eq(content_generations.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteContentGeneration(id: number): Promise<boolean> {
+    const result = await db.delete(content_generations)
+      .where(eq(content_generations.id, id));
+    return true;
+  }
+
+  // Exam methods
+  async createGeneratedExam(exam: InsertGeneratedExam): Promise<GeneratedExam> {
+    const [newExam] = await db.insert(generated_exams).values(exam).returning();
+    return newExam;
+  }
+
+  async getGeneratedExamByContentId(contentGenerationId: number): Promise<GeneratedExam | undefined> {
+    const [exam] = await db.select()
+      .from(generated_exams)
+      .where(eq(generated_exams.content_generation_id, contentGenerationId));
+    return exam;
+  }
+
+  // Lesson methods
+  async createGeneratedLesson(lesson: InsertGeneratedLesson): Promise<GeneratedLesson> {
+    const [newLesson] = await db.insert(generated_lessons).values(lesson).returning();
+    return newLesson;
+  }
+
+  async getGeneratedLessonByContentId(contentGenerationId: number): Promise<GeneratedLesson | undefined> {
+    const [lesson] = await db.select()
+      .from(generated_lessons)
+      .where(eq(generated_lessons.content_generation_id, contentGenerationId));
+    return lesson;
+  }
+
+  // Practice analysis methods
+  async createPracticeAnalysis(analysis: InsertPracticeAnalysis): Promise<PracticeAnalysis> {
+    const [newAnalysis] = await db.insert(practice_analyses).values(analysis).returning();
+    return newAnalysis;
+  }
+
+  async getPracticeAnalysisByContentId(contentGenerationId: number): Promise<PracticeAnalysis | undefined> {
+    const [analysis] = await db.select()
+      .from(practice_analyses)
+      .where(eq(practice_analyses.content_generation_id, contentGenerationId));
+    return analysis;
   }
 }
 

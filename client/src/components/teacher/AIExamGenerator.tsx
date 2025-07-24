@@ -29,6 +29,7 @@ import { InlineMath, BlockMath } from 'react-katex';
 import 'katex/dist/katex.min.css';
 import { generateEnhancedPDF } from '@/lib/pdfGenerator';
 import { useDocumentState } from '@/contexts/DocumentStateContext';
+import { useAuth0 } from '@auth0/auth0-react';
 
 interface ExamConfig {
   grade: string;
@@ -339,6 +340,7 @@ export const AIExamGenerator = () => {
   const [configOptions, setConfigOptions] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('setup');
   const { toast } = useToast();
+  const { getAccessTokenSilently, isAuthenticated } = useAuth0();
   
   // Use persistent document state
   const { documentState, saveGeneratedExam, clearGeneratedExam, setActiveDocument } = useDocumentState();
@@ -435,6 +437,43 @@ export const AIExamGenerator = () => {
     }
   };
 
+  const saveExamToDatabase = async (examContent: string, examMetadata: any) => {
+    if (!isAuthenticated) return;
+    
+    try {
+      const token = await getAccessTokenSilently();
+      
+      const response = await fetch('/api/teacher-content/save-exam', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          title: `${config.subject} Exam - ${config.sub_topic}`,
+          description: `Grade ${config.grade} ${config.difficulty} difficulty exam`,
+          input_parameters: config,
+          generated_content: examContent,
+          metadata: examMetadata,
+          exam_config: config,
+          questions: examMetadata.questions || [],
+          total_marks: examMetadata.total_marks || config.total_marks,
+          estimated_time: config.duration,
+          question_distribution: examMetadata.question_distribution || {},
+          marking_scheme: examMetadata.marking_scheme || ''
+        })
+      });
+
+      if (response.ok) {
+        console.log('Exam saved to database successfully');
+      } else {
+        console.error('Failed to save exam to database');
+      }
+    } catch (error) {
+      console.error('Error saving exam to database:', error);
+    }
+  };
+
   const generateExam = async () => {
     if (!config.grade || !config.subject || !config.sub_topic) {
       toast({
@@ -476,6 +515,11 @@ export const AIExamGenerator = () => {
             config: config,
             generated_at: new Date().toISOString()
           });
+          
+          // Save to database if authenticated
+          if (isAuthenticated) {
+            await saveExamToDatabase(result.paper_content || '', result.metadata || {});
+          }
           
           setLoadingProgress(100);
           setActiveDocument('exam');

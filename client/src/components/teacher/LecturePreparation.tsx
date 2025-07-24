@@ -28,6 +28,7 @@ import { InlineMath, BlockMath } from 'react-katex';
 import 'katex/dist/katex.min.css';
 import { generateEnhancedPDF } from '@/lib/pdfGenerator';
 import { useDocumentState } from '@/contexts/DocumentStateContext';
+import { useAuth0 } from '@auth0/auth0-react';
 
 // Helper function to render content with line-by-line math processing
 const renderLineByLineContent = (text: string) => {
@@ -430,6 +431,7 @@ export const LecturePreparation = () => {
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
   const { toast } = useToast();
+  const { getAccessTokenSilently, isAuthenticated } = useAuth0();
   
   // Use persistent document state
   const { documentState, saveGeneratedLesson, clearGeneratedLesson, setActiveDocument } = useDocumentState();
@@ -450,6 +452,42 @@ export const LecturePreparation = () => {
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const saveLessonToDatabase = async (lessonContent: string, lessonMetadata: any) => {
+    if (!isAuthenticated) return;
+    
+    try {
+      const token = await getAccessTokenSilently();
+      
+      const response = await fetch('/api/teacher-content/save-lesson', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          title: `${formData.subject} - ${formData.topic}`,
+          description: `Grade ${formData.grade_level} lesson on ${formData.topic}`,
+          input_parameters: formData,
+          generated_content: lessonContent,
+          metadata: lessonMetadata,
+          lesson_config: formData,
+          lesson_content: lessonContent,
+          key_concepts: lessonMetadata.key_concepts || formData.subtopics.split(',').map(s => s.trim()),
+          estimated_duration: lessonMetadata.estimated_duration || 45,
+          difficulty_level: lessonMetadata.difficulty_level || 'medium'
+        })
+      });
+
+      if (response.ok) {
+        console.log('Lesson saved to database successfully');
+      } else {
+        console.error('Failed to save lesson to database');
+      }
+    } catch (error) {
+      console.error('Error saving lesson to database:', error);
+    }
   };
 
   const generateLesson = async () => {
@@ -497,6 +535,11 @@ export const LecturePreparation = () => {
             formData: formData,
             generated_at: new Date().toISOString()
           });
+          
+          // Save to database if authenticated
+          if (isAuthenticated) {
+            await saveLessonToDatabase(result.lesson_content || '', result.lesson_data || {});
+          }
           
           setLoadingProgress(100);
           setActiveDocument('lesson');
