@@ -2,6 +2,10 @@ import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { neon } from '@neondatabase/serverless';
 import { storage } from './storage';
+import fetch from 'node-fetch';
+
+// In-memory user store for when database is unavailable
+const memoryUsers = new Map<string, any>();
 
 const router = Router();
 
@@ -79,8 +83,7 @@ router.get('/profile', async (req, res) => {
     const decoded = jwt.decode(token) as any;
     
     console.log('Decoded token success:', !!decoded);
-    console.log('Token sub:', decoded?.sub);
-    console.log('Token email:', decoded?.email);
+    console.log('Full decoded token:', decoded);
     
     if (!decoded || !decoded.sub) {
       console.log('Invalid token format');
@@ -88,30 +91,67 @@ router.get('/profile', async (req, res) => {
     }
     
     const auth0Id = decoded.sub;
-    // Create unique fallback email using Auth0 ID to avoid duplicate key violations
-    const email = decoded.email || `user_${auth0Id.replace(/[^a-zA-Z0-9]/g, '_')}@unknown.local`;
-    const name = decoded.name || decoded.nickname || `User_${auth0Id.split('|').pop()}`;
+    const roleParam = req.query.role as string;
+    const userRole = roleParam === 'teacher' ? 'teacher' : 'student';
+    
+    // Check memory store first
+    const memoryKey = `${auth0Id}_${userRole}`;
+    if (memoryUsers.has(memoryKey)) {
+      console.log('Returning user from memory store');
+      return res.json(memoryUsers.get(memoryKey));
+    }
+    
+    // For Google OAuth2 tokens, try to extract user info from different fields
+    let email = decoded.email || decoded['https://your-app.com/email'] || decoded['email_verified'];
+    let name = decoded.name || decoded['https://your-app.com/name'] || decoded.nickname || decoded.given_name;
+    
+    // If still no email/name, try to fetch from Auth0 userinfo endpoint
+    if (!email || !name) {
+      console.log('No email/name in token, attempting to fetch from Auth0 userinfo endpoint');
+      try {
+                 const userinfoResponse = await fetch(`https://${process.env.AUTH0_DOMAIN || 'dev-fmpogod2vih2psgh.us.auth0.com'}/userinfo`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+        
+        if (userinfoResponse.ok) {
+          const userinfo = await userinfoResponse.json() as any;
+          console.log('Userinfo from Auth0:', userinfo);
+          email = email || userinfo.email;
+          name = name || userinfo.name || userinfo.nickname;
+        } else {
+          console.log('Failed to fetch userinfo:', userinfoResponse.status);
+        }
+      } catch (userinfoError) {
+        console.log('Error fetching userinfo:', userinfoError);
+      }
+    }
+    
+    // Final fallbacks
+    email = email || `user_${auth0Id.replace(/[^a-zA-Z0-9]/g, '_')}@demo.local`;
+    name = name || `User_${auth0Id.split('|').pop()}`;
     
     console.log('Looking up user for Auth0 ID:', auth0Id);
+    console.log('Using email:', email, 'name:', name);
     
-    // Try to get existing user from database
-    let userWithProfile = await storage.getUserWithProfile(auth0Id);
+    let userWithProfile;
+    let isDatabaseWorking = true;
     
-    if (!userWithProfile) {
-      console.log('User not found, creating new user:', email);
+    try {
+      // Try to get existing user from database
+      userWithProfile = await storage.getUserWithProfile(auth0Id);
       
-      // Get role from URL parameter or default to student
-      const roleParam = req.query.role as string;
-      const userRole = roleParam === 'teacher' ? 'teacher' : 'student';
-      
-      try {
+      if (!userWithProfile) {
+        console.log('User not found, creating new user:', email);
+        
         // Create new user
         const newUser = await storage.createUser({
           auth0_id: auth0Id,
           email: email,
           name: name,
           role: userRole,
-          roles: [userRole], // Add to roles array as well
+          roles: [userRole],
           first_name: name.split(' ')[0],
           last_name: name.split(' ').slice(1).join(' ') || null
         });
@@ -136,46 +176,79 @@ router.get('/profile', async (req, res) => {
         
         userWithProfile = { user: newUser, profile };
         console.log(`Created new ${userRole} user:`, email);
-      } catch (createError) {
-        console.error('Error creating user:', createError);
-        // If user creation fails, try to get the user again in case it was created by another request
-        userWithProfile = await storage.getUserWithProfile(auth0Id);
-        if (!userWithProfile) {
-          throw createError; // Re-throw the error if user still doesn't exist
-        }
       }
+      
+    } catch (dbError: any) {
+      console.error('Database error:', dbError);
+      isDatabaseWorking = false;
+      
+      // Database is unavailable, create in-memory user
+      console.log('Database unavailable, creating in-memory user');
+      userWithProfile = {
+        user: {
+          id: auth0Id,
+          auth0_id: auth0Id,
+          email,
+          name,
+          role: userRole,
+          roles: [userRole],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          first_name: name.split(' ')[0],
+          last_name: name.split(' ').slice(1).join(' ') || null,
+        },
+        profile: userRole === 'student' ? {
+          id: 1,
+          user_id: auth0Id,
+          grade_level: '10',
+          section: 'A',
+          subjects: ['Mathematics', 'Science', 'English'],
+          created_at: new Date().toISOString()
+        } : userRole === 'teacher' ? {
+          id: 1,
+          user_id: auth0Id,
+          subjects: ['Mathematics'],
+          grades: ['10'],
+          department: 'Science',
+          created_at: new Date().toISOString()
+        } : undefined
+      };
+      
+      // Store in memory for subsequent requests
+      memoryUsers.set(memoryKey, userWithProfile);
+      console.log('Stored user in memory store');
     }
     
     res.json(userWithProfile);
     
   } catch (error) {
     console.error('Error fetching user profile:', error);
-    // If database (Neon) is unreachable (common in free-tier sleep/disabled), return a minimal profile so the frontend can proceed
-    if ((error as any)?.message?.includes('endpoint is disabled')) {
-      const authHeader = req.headers.authorization;
-      let decoded: any = null;
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        decoded = jwt.decode(authHeader.substring(7));
-      }
-      const sub = decoded?.sub || 'unknown';
-      const email = decoded?.email || `user_${sub.replace(/[^a-zA-Z0-9]/g, '_')}@demo.local`;
-      const name = decoded?.name || decoded?.nickname || email.split('@')[0];
-      const roleParam = (req.query.role as string) || 'student';
-      return res.json({
-        user: {
-          id: sub,
-          auth0_id: sub,
-          email,
-          name,
-          role: roleParam,
-          roles: [roleParam],
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        profile: null,
-      });
-    }
     res.status(500).json({ error: 'Failed to fetch user profile' });
+  }
+});
+
+// Logout endpoint to clear memory store
+router.post('/logout', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      const decoded = jwt.decode(token) as any;
+      
+      if (decoded?.sub) {
+        // Clear user from memory store for all roles
+        const auth0Id = decoded.sub;
+        memoryUsers.delete(`${auth0Id}_student`);
+        memoryUsers.delete(`${auth0Id}_teacher`);
+        console.log('Cleared user from memory store:', auth0Id);
+      }
+    }
+    
+    res.json({ success: true, message: 'Logged out successfully' });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.json({ success: true }); // Still return success since logout should always work
   }
 });
 

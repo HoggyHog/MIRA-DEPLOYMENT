@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Link } from 'wouter';
-import { GraduationCap, FileText, BookOpen, ArrowLeft } from 'lucide-react';
+import { GraduationCap, FileText, BookOpen, ArrowLeft, PlayCircle } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AIExamGenerator } from '@/components/teacher/AIExamGenerator';
 import { LecturePreparation } from '@/components/teacher/LecturePreparation';
 import { DocumentStateProvider } from '@/contexts/DocumentStateContext';
+import PracticePlaygroundDemo from '@/components/student/PracticePlaygroundDemo';
 
 const TeacherPilot = () => {
   const [activeTab, setActiveTab] = useState('exam-generator');
@@ -48,7 +49,7 @@ const TeacherPilot = () => {
         </div>
 
         {/* Feature Cards Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div 
             className={`p-6 rounded-lg border-2 cursor-pointer transition-all ${
               activeTab === 'exam-generator' 
@@ -82,12 +83,30 @@ const TeacherPilot = () => {
               Generate comprehensive lesson plans with activities, assessments, and CBSE alignment
             </p>
           </div>
+
+          {/* NEW Practice Playground feature card */}
+          <div 
+            className={`p-6 rounded-lg border-2 cursor-pointer transition-all ${
+              activeTab === 'practice-playground' 
+                ? 'border-green-500 bg-green-50' 
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+            onClick={() => setActiveTab('practice-playground')}
+          >
+            <div className="flex items-center mb-3">
+              <PlayCircle className="h-8 w-8 text-green-600" />
+              <h3 className="text-xl font-semibold text-gray-900 ml-3">Practice Playground</h3>
+            </div>
+            <p className="text-gray-600">
+              Analyse practice answers with AI marking and feedback, OCR-supported.
+            </p>
+          </div>
         </div>
 
         {/* Main Content */}
         <div className="bg-white rounded-lg shadow-sm border">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-2 bg-gray-50 p-1 m-4 rounded-lg">
+            <TabsList className="grid w-full grid-cols-3 bg-gray-50 p-1 m-4 rounded-lg">
               <TabsTrigger 
                 value="exam-generator" 
                 className="flex items-center gap-2 data-[state=active]:bg-white"
@@ -102,6 +121,14 @@ const TeacherPilot = () => {
                 <BookOpen className="h-4 w-4" />
                 AI Lesson Generator
               </TabsTrigger>
+              {/* NEW PRACTICE TRIGGER */}
+              <TabsTrigger 
+                value="practice-playground"
+                className="flex items-center gap-2 data-[state=active]:bg-white"
+              >
+                <PlayCircle className="h-4 w-4" />
+                Practice Playground
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="exam-generator" className="p-6 pt-0">
@@ -110,6 +137,10 @@ const TeacherPilot = () => {
 
             <TabsContent value="lesson-generator" className="p-6 pt-0">
               <LecturePreparation />
+            </TabsContent>
+            {/* NEW PRACTICE CONTENT */}
+            <TabsContent value="practice-playground" className="p-6 pt-0">
+              <PracticePlaygroundDemo />
             </TabsContent>
           </Tabs>
         </div>

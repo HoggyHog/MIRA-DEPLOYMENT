@@ -2,9 +2,10 @@
 // Replace these with your actual Auth0 credentials
 
 export const auth0Config = {
-  domain: import.meta.env.VITE_AUTH0_DOMAIN || "your-auth0-domain.auth0.com",
-  clientId: import.meta.env.VITE_AUTH0_CLIENT_ID || "your-auth0-client-id", 
-  audience: import.meta.env.VITE_AUTH0_AUDIENCE || "your-api-identifier",
+  // For development testing - replace with your actual values
+  domain: import.meta.env.VITE_AUTH0_DOMAIN || "dev-example.us.auth0.com",
+  clientId: import.meta.env.VITE_AUTH0_CLIENT_ID || "test-client-id", 
+  audience: import.meta.env.VITE_AUTH0_AUDIENCE || "https://mira-api.example.com",
   redirectUri: window.location.origin,
   scope: "openid profile email",
 };
@@ -13,7 +14,8 @@ export const auth0Config = {
 console.log('🔧 Auth0 Config:', {
   domain: auth0Config.domain,
   clientId: auth0Config.clientId,
-  audience: auth0Config.audience
+  audience: auth0Config.audience,
+  redirectUri: auth0Config.redirectUri
 });
 
 // For production, set up your Auth0 credentials:

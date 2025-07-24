@@ -18,7 +18,7 @@ import StudentPilot from "./pages/StudentPilot";
 
 // Component to handle protected routes that require authentication
 const ProtectedRoute = ({ component: Component, ...props }: { component: React.ComponentType<any>; [key: string]: any }) => {
-  const { isAuthenticated, isLoading, userProfile } = useAuth();
+  const { isAuthenticated, isLoading, userProfile, authError } = useAuth();
 
   if (isLoading) {
     return (
@@ -26,6 +26,24 @@ const ProtectedRoute = ({ component: Component, ...props }: { component: React.C
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show auth error if there is one
+  if (authError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
+          <h2 className="text-xl font-bold text-red-600 mb-4">Authentication Error</h2>
+          <p className="text-gray-600 mb-4">{authError}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );

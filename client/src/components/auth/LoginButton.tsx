@@ -5,7 +5,7 @@ import { LogIn, GraduationCap, UserCheck, BookOpen } from 'lucide-react';
 import { useAuth } from '@/providers/AuthProvider';
 
 const LoginButton: React.FC = () => {
-  const { login, isLoading } = useAuth();
+  const { login, forceLogout, isLoading, isAuthenticated } = useAuth();
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50">
@@ -94,10 +94,19 @@ const LoginButton: React.FC = () => {
           </Card>
         </div>
 
-        <div className="text-center">
+        <div className="text-center space-y-3">
           <p className="text-sm text-gray-500">
             Secure authentication powered by Auth0
           </p>
+          {isAuthenticated && (
+            <Button 
+              onClick={forceLogout}
+              variant="outline"
+              className="text-sm"
+            >
+              Switch Account / Sign Out
+            </Button>
+          )}
         </div>
       </div>
     </div>
