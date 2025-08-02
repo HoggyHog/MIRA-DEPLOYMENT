@@ -1,9 +1,12 @@
 import React from 'react';
 import { Link } from 'wouter';
-import { GraduationCap, Users, Heart, Settings } from 'lucide-react';
+import { GraduationCap, Users, Heart, Settings, LogOut } from 'lucide-react';
 import RoleBasedLoginButton from '@/components/auth/RoleBasedLoginButton';
+import { useAuth } from '@/providers/AuthProvider';
 
 const Index = () => {
+  const { isAuthenticated, logout, userProfile } = useAuth();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
       {/* Navigation */}
@@ -15,30 +18,47 @@ const Index = () => {
               <span className="ml-2 text-xl font-bold text-gray-900">Mira by Centum AI</span>
             </div>
             <div className="flex items-center space-x-4">
-              <RoleBasedLoginButton
-                role="student"
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
-              >
-                Student Login
-              </RoleBasedLoginButton>
-              <RoleBasedLoginButton
-                role="teacher"
-                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition-colors"
-              >
-                Teacher Login
-              </RoleBasedLoginButton>
-              <Link 
-                href="/parent-dashboard"
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md transition-colors"
-              >
-                Parent Login
-              </Link>
-              <Link 
-                href="/admin-dashboard"
-                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md transition-colors"
-              >
-                Admin Login
-              </Link>
+              {isAuthenticated ? (
+                <>
+                  <span className="text-sm text-gray-600">
+                    Welcome, {userProfile?.user?.name || 'User'} ({userProfile?.user?.role})
+                  </span>
+                  <button
+                    onClick={logout}
+                    className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md transition-colors flex items-center space-x-2"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    <span>Logout</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <RoleBasedLoginButton
+                    role="student"
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+                  >
+                    Student Login
+                  </RoleBasedLoginButton>
+                  <RoleBasedLoginButton
+                    role="teacher"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition-colors"
+                  >
+                    Teacher Login
+                  </RoleBasedLoginButton>
+                  <Link 
+                    href="/parent-dashboard"
+                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md transition-colors"
+                  >
+                    Parent Login
+                  </Link>
+                  <Link 
+                    href="/admin-dashboard"
+                    className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md transition-colors"
+                  >
+                    Admin Login
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -53,6 +73,13 @@ const Index = () => {
           <p className="mt-3 max-w-md mx-auto text-base text-gray-500 sm:text-lg md:mt-5 md:text-xl md:max-w-3xl">
             Your comprehensive educational management system for students, teachers, parents, and administrators.
           </p>
+          {isAuthenticated && (
+            <div className="mt-6">
+              <p className="text-sm text-gray-600">
+                You are currently logged in. Use the logout button above to return to the demo.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Feature Cards */}

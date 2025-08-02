@@ -1143,7 +1143,7 @@ import { drizzle } from "drizzle-orm/neon-http";
 import { neon } from "@neondatabase/serverless";
 
 // shared/schema.ts
-import { pgTable, text, serial, timestamp, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, varchar } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 var users = pgTable("users", {
   id: varchar("id").primaryKey(),
@@ -1181,6 +1181,71 @@ var teacher_profiles = pgTable("teacher_profiles", {
   department: varchar("department", { length: 100 }),
   created_at: timestamp("created_at").defaultNow()
 });
+var content_generations = pgTable("content_generations", {
+  id: serial("id").primaryKey(),
+  user_id: varchar("user_id").references(() => users.id).notNull(),
+  content_type: varchar("content_type", { length: 50 }).notNull(),
+  // 'exam', 'lesson', 'practice_analysis'
+  title: varchar("title", { length: 500 }),
+  description: text("description"),
+  input_parameters: text("input_parameters").notNull(),
+  // JSON string of request params
+  generated_content: text("generated_content"),
+  // The actual generated content
+  metadata: text("metadata"),
+  // JSON string of additional metadata
+  status: varchar("status", { length: 20 }).default("completed"),
+  is_favorite: boolean("is_favorite").default(false),
+  created_at: timestamp("created_at").defaultNow(),
+  updated_at: timestamp("updated_at").defaultNow()
+});
+var generated_exams = pgTable("generated_exams", {
+  id: serial("id").primaryKey(),
+  content_generation_id: integer("content_generation_id").references(() => content_generations.id).notNull(),
+  exam_config: text("exam_config").notNull(),
+  // JSON string of exam configuration
+  questions: text("questions").notNull(),
+  // JSON string of questions array
+  total_marks: integer("total_marks").notNull(),
+  estimated_time: integer("estimated_time").notNull(),
+  // in minutes
+  question_distribution: text("question_distribution"),
+  // JSON string
+  curriculum_aligned: boolean("curriculum_aligned").default(true),
+  marking_scheme: text("marking_scheme"),
+  created_at: timestamp("created_at").defaultNow()
+});
+var generated_lessons = pgTable("generated_lessons", {
+  id: serial("id").primaryKey(),
+  content_generation_id: integer("content_generation_id").references(() => content_generations.id).notNull(),
+  lesson_config: text("lesson_config").notNull(),
+  // JSON string of lesson configuration
+  lesson_content: text("lesson_content").notNull(),
+  // Main lesson content
+  key_concepts: text("key_concepts"),
+  // JSON array of concepts
+  estimated_duration: integer("estimated_duration"),
+  // in minutes
+  difficulty_level: varchar("difficulty_level", { length: 20 }),
+  created_at: timestamp("created_at").defaultNow()
+});
+var practice_analyses = pgTable("practice_analyses", {
+  id: serial("id").primaryKey(),
+  content_generation_id: integer("content_generation_id").references(() => content_generations.id).notNull(),
+  practice_config: text("practice_config").notNull(),
+  // JSON string of configuration
+  student_responses: text("student_responses").notNull(),
+  ideal_answers: text("ideal_answers").notNull(),
+  analysis_results: text("analysis_results"),
+  // JSON string of analysis
+  score_awarded: integer("score_awarded").notNull(),
+  total_marks: integer("total_marks").notNull(),
+  misconceptions_identified: text("misconceptions_identified"),
+  // JSON array
+  improvement_suggestions: text("improvement_suggestions"),
+  // JSON array
+  created_at: timestamp("created_at").defaultNow()
+});
 var insertUserSchema = createInsertSchema(users).omit({
   id: true,
   created_at: true,
@@ -1194,9 +1259,26 @@ var insertTeacherProfileSchema = createInsertSchema(teacher_profiles).omit({
   id: true,
   created_at: true
 });
+var insertContentGenerationSchema = createInsertSchema(content_generations).omit({
+  id: true,
+  created_at: true,
+  updated_at: true
+});
+var insertGeneratedExamSchema = createInsertSchema(generated_exams).omit({
+  id: true,
+  created_at: true
+});
+var insertGeneratedLessonSchema = createInsertSchema(generated_lessons).omit({
+  id: true,
+  created_at: true
+});
+var insertPracticeAnalysisSchema = createInsertSchema(practice_analyses).omit({
+  id: true,
+  created_at: true
+});
 
 // server/storage.ts
-import { eq } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL must be set. Did you forget to provision a database?");
 }
@@ -1259,10 +1341,62 @@ var DatabaseStorage = class {
     }
     return { user, profile };
   }
+  // Content generation methods
+  async createContentGeneration(content) {
+    const [newContent] = await db.insert(content_generations).values(content).returning();
+    return newContent;
+  }
+  async getContentGenerationsByUser(userId, contentType) {
+    if (contentType) {
+      return await db.select().from(content_generations).where(and(eq(content_generations.user_id, userId), eq(content_generations.content_type, contentType))).orderBy(desc(content_generations.created_at));
+    }
+    return await db.select().from(content_generations).where(eq(content_generations.user_id, userId)).orderBy(desc(content_generations.created_at));
+  }
+  async getContentGenerationById(id) {
+    const [content] = await db.select().from(content_generations).where(eq(content_generations.id, id));
+    return content;
+  }
+  async updateContentGeneration(id, updates) {
+    const [updated] = await db.update(content_generations).set({ ...updates, updated_at: /* @__PURE__ */ new Date() }).where(eq(content_generations.id, id)).returning();
+    return updated;
+  }
+  async deleteContentGeneration(id) {
+    const result = await db.delete(content_generations).where(eq(content_generations.id, id));
+    return true;
+  }
+  // Exam methods
+  async createGeneratedExam(exam) {
+    const [newExam] = await db.insert(generated_exams).values(exam).returning();
+    return newExam;
+  }
+  async getGeneratedExamByContentId(contentGenerationId) {
+    const [exam] = await db.select().from(generated_exams).where(eq(generated_exams.content_generation_id, contentGenerationId));
+    return exam;
+  }
+  // Lesson methods
+  async createGeneratedLesson(lesson) {
+    const [newLesson] = await db.insert(generated_lessons).values(lesson).returning();
+    return newLesson;
+  }
+  async getGeneratedLessonByContentId(contentGenerationId) {
+    const [lesson] = await db.select().from(generated_lessons).where(eq(generated_lessons.content_generation_id, contentGenerationId));
+    return lesson;
+  }
+  // Practice analysis methods
+  async createPracticeAnalysis(analysis) {
+    const [newAnalysis] = await db.insert(practice_analyses).values(analysis).returning();
+    return newAnalysis;
+  }
+  async getPracticeAnalysisByContentId(contentGenerationId) {
+    const [analysis] = await db.select().from(practice_analyses).where(eq(practice_analyses.content_generation_id, contentGenerationId));
+    return analysis;
+  }
 };
 var storage = new DatabaseStorage();
 
 // server/authRoutes.ts
+import fetch3 from "node-fetch";
+var memoryUsers = /* @__PURE__ */ new Map();
 var router2 = Router2();
 router2.post("/auth0-webhook", async (req, res) => {
   try {
@@ -1319,29 +1453,57 @@ router2.get("/profile", async (req, res) => {
     console.log("Token received, length:", token.length);
     const decoded = jwt.decode(token);
     console.log("Decoded token success:", !!decoded);
-    console.log("Token sub:", decoded?.sub);
-    console.log("Token email:", decoded?.email);
+    console.log("Full decoded token:", decoded);
     if (!decoded || !decoded.sub) {
       console.log("Invalid token format");
       return res.status(401).json({ error: "Invalid token format" });
     }
     const auth0Id = decoded.sub;
-    const email = decoded.email || `user_${auth0Id.replace(/[^a-zA-Z0-9]/g, "_")}@unknown.local`;
-    const name = decoded.name || decoded.nickname || `User_${auth0Id.split("|").pop()}`;
-    console.log("Looking up user for Auth0 ID:", auth0Id);
-    let userWithProfile = await storage.getUserWithProfile(auth0Id);
-    if (!userWithProfile) {
-      console.log("User not found, creating new user:", email);
-      const roleParam = req.query.role;
-      const userRole = roleParam === "teacher" ? "teacher" : "student";
+    const roleParam = req.query.role;
+    const userRole = roleParam === "teacher" ? "teacher" : "student";
+    const memoryKey = `${auth0Id}_${userRole}`;
+    if (memoryUsers.has(memoryKey)) {
+      console.log("Returning user from memory store");
+      return res.json(memoryUsers.get(memoryKey));
+    }
+    let email = decoded.email || decoded["https://your-app.com/email"] || decoded["email_verified"];
+    let name = decoded.name || decoded["https://your-app.com/name"] || decoded.nickname || decoded.given_name;
+    if (!email || !name) {
+      console.log("No email/name in token, attempting to fetch from Auth0 userinfo endpoint");
       try {
+        const userinfoResponse = await fetch3(`https://${process.env.AUTH0_DOMAIN || "dev-fmpogod2vih2psgh.us.auth0.com"}/userinfo`, {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
+        if (userinfoResponse.ok) {
+          const userinfo = await userinfoResponse.json();
+          console.log("Userinfo from Auth0:", userinfo);
+          email = email || userinfo.email;
+          name = name || userinfo.name || userinfo.nickname;
+        } else {
+          console.log("Failed to fetch userinfo:", userinfoResponse.status);
+        }
+      } catch (userinfoError) {
+        console.log("Error fetching userinfo:", userinfoError);
+      }
+    }
+    email = email || `user_${auth0Id.replace(/[^a-zA-Z0-9]/g, "_")}@demo.local`;
+    name = name || `User_${auth0Id.split("|").pop()}`;
+    console.log("Looking up user for Auth0 ID:", auth0Id);
+    console.log("Using email:", email, "name:", name);
+    let userWithProfile;
+    let isDatabaseWorking = true;
+    try {
+      userWithProfile = await storage.getUserWithProfile(auth0Id);
+      if (!userWithProfile) {
+        console.log("User not found, creating new user:", email);
         const newUser = await storage.createUser({
           auth0_id: auth0Id,
           email,
           name,
           role: userRole,
           roles: [userRole],
-          // Add to roles array as well
           first_name: name.split(" ")[0],
           last_name: name.split(" ").slice(1).join(" ") || null
         });
@@ -1363,42 +1525,66 @@ router2.get("/profile", async (req, res) => {
         }
         userWithProfile = { user: newUser, profile };
         console.log(`Created new ${userRole} user:`, email);
-      } catch (createError) {
-        console.error("Error creating user:", createError);
-        userWithProfile = await storage.getUserWithProfile(auth0Id);
-        if (!userWithProfile) {
-          throw createError;
-        }
       }
+    } catch (dbError) {
+      console.error("Database error:", dbError);
+      isDatabaseWorking = false;
+      console.log("Database unavailable, creating in-memory user");
+      userWithProfile = {
+        user: {
+          id: auth0Id,
+          auth0_id: auth0Id,
+          email,
+          name,
+          role: userRole,
+          roles: [userRole],
+          created_at: (/* @__PURE__ */ new Date()).toISOString(),
+          updated_at: (/* @__PURE__ */ new Date()).toISOString(),
+          first_name: name.split(" ")[0],
+          last_name: name.split(" ").slice(1).join(" ") || null
+        },
+        profile: userRole === "student" ? {
+          id: 1,
+          user_id: auth0Id,
+          grade_level: "10",
+          section: "A",
+          subjects: ["Mathematics", "Science", "English"],
+          created_at: (/* @__PURE__ */ new Date()).toISOString()
+        } : userRole === "teacher" ? {
+          id: 1,
+          user_id: auth0Id,
+          subjects: ["Mathematics"],
+          grades: ["10"],
+          department: "Science",
+          created_at: (/* @__PURE__ */ new Date()).toISOString()
+        } : void 0
+      };
+      memoryUsers.set(memoryKey, userWithProfile);
+      console.log("Stored user in memory store");
     }
     res.json(userWithProfile);
   } catch (error) {
     console.error("Error fetching user profile:", error);
-    if (error?.message?.includes("endpoint is disabled")) {
-      const authHeader = req.headers.authorization;
-      let decoded = null;
-      if (authHeader && authHeader.startsWith("Bearer ")) {
-        decoded = jwt.decode(authHeader.substring(7));
-      }
-      const sub = decoded?.sub || "unknown";
-      const email = decoded?.email || `user_${sub.replace(/[^a-zA-Z0-9]/g, "_")}@demo.local`;
-      const name = decoded?.name || decoded?.nickname || email.split("@")[0];
-      const roleParam = req.query.role || "student";
-      return res.json({
-        user: {
-          id: sub,
-          auth0_id: sub,
-          email,
-          name,
-          role: roleParam,
-          roles: [roleParam],
-          created_at: (/* @__PURE__ */ new Date()).toISOString(),
-          updated_at: (/* @__PURE__ */ new Date()).toISOString()
-        },
-        profile: null
-      });
-    }
     res.status(500).json({ error: "Failed to fetch user profile" });
+  }
+});
+router2.post("/logout", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.substring(7);
+      const decoded = jwt.decode(token);
+      if (decoded?.sub) {
+        const auth0Id = decoded.sub;
+        memoryUsers.delete(`${auth0Id}_student`);
+        memoryUsers.delete(`${auth0Id}_teacher`);
+        console.log("Cleared user from memory store:", auth0Id);
+      }
+    }
+    res.json({ success: true, message: "Logged out successfully" });
+  } catch (error) {
+    console.error("Logout error:", error);
+    res.json({ success: true });
   }
 });
 router2.put("/profile", async (req, res) => {
@@ -1428,6 +1614,9 @@ router2.put("/profile", async (req, res) => {
   }
 });
 var authRoutes_default = router2;
+
+// server/teacherContentRoutes.ts
+import { Router as Router3 } from "express";
 
 // server/authMiddleware.ts
 import jwt2 from "jsonwebtoken";
@@ -1499,6 +1688,23 @@ var verifyToken = async (req, res, next) => {
     res.status(401).json({ error: "Invalid token" });
   }
 };
+var attachUser = async (req, res, next) => {
+  try {
+    if (!req.auth?.sub) {
+      return res.status(401).json({ error: "No user ID in token" });
+    }
+    const user = await storage.getUserByAuth0Id(req.auth.sub);
+    if (user) {
+      req.auth.role = user.role;
+      req.auth.user = user;
+      req.user = { userId: user.id };
+    }
+    next();
+  } catch (error) {
+    console.error("Error attaching user:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
 var requireRole = (allowedRoles) => {
   return (req, res, next) => {
     if (!req.auth?.role) {
@@ -1514,12 +1720,288 @@ var requireStudent = requireRole(["student"]);
 var requireTeacher = requireRole(["teacher"]);
 var requireAuth = requireRole(["student", "teacher"]);
 
+// server/teacherContentRoutes.ts
+var router3 = Router3();
+router3.get("/content-generations", requireTeacher, async (req, res) => {
+  try {
+    const userId = req.auth?.user?.id || req.user?.userId;
+    const contentType = req.query.contentType;
+    if (!userId) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
+    const contentGenerations = await storage.getContentGenerationsByUser(userId, contentType);
+    const enrichedContent = await Promise.all(contentGenerations.map(async (content) => {
+      let specificContent = null;
+      switch (content.content_type) {
+        case "exam":
+          specificContent = await storage.getGeneratedExamByContentId(content.id);
+          break;
+        case "lesson":
+          specificContent = await storage.getGeneratedLessonByContentId(content.id);
+          break;
+        case "practice_analysis":
+          specificContent = await storage.getPracticeAnalysisByContentId(content.id);
+          break;
+      }
+      return {
+        ...content,
+        specificContent,
+        input_parameters: content.input_parameters ? JSON.parse(content.input_parameters) : null,
+        metadata: content.metadata ? JSON.parse(content.metadata) : null
+      };
+    }));
+    res.json({ success: true, content: enrichedContent });
+  } catch (error) {
+    console.error("Error fetching content generations:", error);
+    res.status(500).json({ error: "Failed to fetch content generations" });
+  }
+});
+router3.get("/content-generations/:id", requireTeacher, async (req, res) => {
+  try {
+    const userId = req.auth?.user?.id || req.user?.userId;
+    const contentId = parseInt(req.params.id);
+    if (!userId) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
+    const content = await storage.getContentGenerationById(contentId);
+    if (!content) {
+      return res.status(404).json({ error: "Content not found" });
+    }
+    if (content.user_id !== userId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    let specificContent = null;
+    switch (content.content_type) {
+      case "exam":
+        specificContent = await storage.getGeneratedExamByContentId(content.id);
+        break;
+      case "lesson":
+        specificContent = await storage.getGeneratedLessonByContentId(content.id);
+        break;
+      case "practice_analysis":
+        specificContent = await storage.getPracticeAnalysisByContentId(content.id);
+        break;
+    }
+    res.json({
+      success: true,
+      content: {
+        ...content,
+        specificContent,
+        input_parameters: content.input_parameters ? JSON.parse(content.input_parameters) : null,
+        metadata: content.metadata ? JSON.parse(content.metadata) : null
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching content generation:", error);
+    res.status(500).json({ error: "Failed to fetch content generation" });
+  }
+});
+router3.post("/save-exam", requireTeacher, async (req, res) => {
+  try {
+    const userId = req.auth?.user?.id || req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
+    const {
+      title,
+      description,
+      input_parameters,
+      generated_content,
+      metadata,
+      exam_config,
+      questions,
+      total_marks,
+      estimated_time,
+      question_distribution,
+      marking_scheme
+    } = req.body;
+    const contentGeneration = await storage.createContentGeneration({
+      user_id: userId,
+      content_type: "exam",
+      title,
+      description,
+      input_parameters: JSON.stringify(input_parameters),
+      generated_content,
+      metadata: metadata ? JSON.stringify(metadata) : null,
+      status: "completed",
+      is_favorite: false
+    });
+    const generatedExam = await storage.createGeneratedExam({
+      content_generation_id: contentGeneration.id,
+      exam_config: JSON.stringify(exam_config),
+      questions: JSON.stringify(questions),
+      total_marks,
+      estimated_time,
+      question_distribution: question_distribution ? JSON.stringify(question_distribution) : null,
+      curriculum_aligned: true,
+      marking_scheme
+    });
+    res.json({
+      success: true,
+      contentGeneration,
+      generatedExam
+    });
+  } catch (error) {
+    console.error("Error saving exam:", error);
+    res.status(500).json({ error: "Failed to save exam" });
+  }
+});
+router3.post("/save-lesson", requireTeacher, async (req, res) => {
+  try {
+    const userId = req.auth?.user?.id || req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
+    const {
+      title,
+      description,
+      input_parameters,
+      generated_content,
+      metadata,
+      lesson_config,
+      lesson_content,
+      key_concepts,
+      estimated_duration,
+      difficulty_level
+    } = req.body;
+    const contentGeneration = await storage.createContentGeneration({
+      user_id: userId,
+      content_type: "lesson",
+      title,
+      description,
+      input_parameters: JSON.stringify(input_parameters),
+      generated_content,
+      metadata: metadata ? JSON.stringify(metadata) : null,
+      status: "completed",
+      is_favorite: false
+    });
+    const generatedLesson = await storage.createGeneratedLesson({
+      content_generation_id: contentGeneration.id,
+      lesson_config: JSON.stringify(lesson_config),
+      lesson_content,
+      key_concepts: key_concepts ? JSON.stringify(key_concepts) : null,
+      estimated_duration,
+      difficulty_level
+    });
+    res.json({
+      success: true,
+      contentGeneration,
+      generatedLesson
+    });
+  } catch (error) {
+    console.error("Error saving lesson:", error);
+    res.status(500).json({ error: "Failed to save lesson" });
+  }
+});
+router3.post("/save-practice-analysis", requireTeacher, async (req, res) => {
+  try {
+    const userId = req.auth?.user?.id || req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
+    const {
+      title,
+      description,
+      input_parameters,
+      generated_content,
+      metadata,
+      practice_config,
+      student_responses,
+      ideal_answers,
+      analysis_results,
+      score_awarded,
+      total_marks,
+      misconceptions_identified,
+      improvement_suggestions
+    } = req.body;
+    const contentGeneration = await storage.createContentGeneration({
+      user_id: userId,
+      content_type: "practice_analysis",
+      title,
+      description,
+      input_parameters: JSON.stringify(input_parameters),
+      generated_content,
+      metadata: metadata ? JSON.stringify(metadata) : null,
+      status: "completed",
+      is_favorite: false
+    });
+    const practiceAnalysis = await storage.createPracticeAnalysis({
+      content_generation_id: contentGeneration.id,
+      practice_config: JSON.stringify(practice_config),
+      student_responses,
+      ideal_answers,
+      analysis_results: analysis_results ? JSON.stringify(analysis_results) : null,
+      score_awarded,
+      total_marks,
+      misconceptions_identified: misconceptions_identified ? JSON.stringify(misconceptions_identified) : null,
+      improvement_suggestions: improvement_suggestions ? JSON.stringify(improvement_suggestions) : null
+    });
+    res.json({
+      success: true,
+      contentGeneration,
+      practiceAnalysis
+    });
+  } catch (error) {
+    console.error("Error saving practice analysis:", error);
+    res.status(500).json({ error: "Failed to save practice analysis" });
+  }
+});
+router3.patch("/content-generations/:id", requireTeacher, async (req, res) => {
+  try {
+    const userId = req.auth?.user?.id || req.user?.userId;
+    const contentId = parseInt(req.params.id);
+    if (!userId) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
+    const content = await storage.getContentGenerationById(contentId);
+    if (!content) {
+      return res.status(404).json({ error: "Content not found" });
+    }
+    if (content.user_id !== userId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    const { is_favorite, title, description } = req.body;
+    const updatedContent = await storage.updateContentGeneration(contentId, {
+      is_favorite,
+      title,
+      description
+    });
+    res.json({ success: true, content: updatedContent });
+  } catch (error) {
+    console.error("Error updating content generation:", error);
+    res.status(500).json({ error: "Failed to update content generation" });
+  }
+});
+router3.delete("/content-generations/:id", requireTeacher, async (req, res) => {
+  try {
+    const userId = req.auth?.user?.id || req.user?.userId;
+    const contentId = parseInt(req.params.id);
+    if (!userId) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
+    const content = await storage.getContentGenerationById(contentId);
+    if (!content) {
+      return res.status(404).json({ error: "Content not found" });
+    }
+    if (content.user_id !== userId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    await storage.deleteContentGeneration(contentId);
+    res.json({ success: true, message: "Content deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting content generation:", error);
+    res.status(500).json({ error: "Failed to delete content generation" });
+  }
+});
+var teacherContentRoutes_default = router3;
+
 // server/routes.ts
 async function registerRoutes(app2) {
   app2.use("/api/auth", authRoutes_default);
   app2.use("/api/protected", verifyToken);
   app2.post("/api/protected/generate-exam", requireTeacher, generateExamPaper);
   app2.post("/api/protected/generate-lesson", requireTeacher, generateLesson);
+  app2.use("/api/protected/teacher-content", attachUser, teacherContentRoutes_default);
   app2.post("/api/protected/analyze-practice", requireStudent, analyzePracticeSession);
   app2.post("/api/protected/analyze-practice-multi-image", requireStudent, analyzePracticeMultiImage);
   app2.post("/api/protected/ocr-preview", requireStudent, previewOCR);
@@ -1536,6 +2018,7 @@ async function registerRoutes(app2) {
   app2.post("/api/ai-tutor/teach", teachContent);
   app2.post("/api/ai-tutor/generate-exam", generateExam);
   app2.post("/api/ai-tutor/chat", chatWithTutor);
+  app2.use("/api/teacher-content", teacherContentRoutes_default);
   const httpServer = createServer(app2);
   return httpServer;
 }
