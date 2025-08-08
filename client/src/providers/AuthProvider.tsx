@@ -117,7 +117,7 @@ const Auth0AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }
       }
     } catch (error) {
       console.error('Error fetching user profile:', error);
-      setAuthError(`Profile fetch error: ${error.message}`);
+      setAuthError(`Profile fetch error: ${error instanceof Error ? error.message : 'Unknown error'}`);
       return null;
     }
   };
@@ -167,7 +167,7 @@ const Auth0AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           id: `demo_${role}_${Date.now()}`,
           auth0_id: `demo|${role}`,
           email: `demo.${role}@mira.local`,
-          name: `Demo ${role.charAt(0).toUpperCase() + role.slice(1)}`,
+          name: `Demo ${role ? role.charAt(0).toUpperCase() + role.slice(1) : 'User'}`,
           role: role as any,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -207,7 +207,7 @@ const Auth0AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }
       });
     } catch (error) {
       console.error('Login redirect failed:', error);
-      setAuthError(`Login failed: ${error.message}`);
+      setAuthError(`Login failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -259,7 +259,7 @@ const Auth0AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     auth0Logout({ 
       logoutParams: { 
         returnTo: window.location.origin,
-        federated: '' // This clears the Google session too
+        federated: true // This clears the Google session too
       } 
     });
     setUserProfile(null);
@@ -292,10 +292,10 @@ const Auth0AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           });
         } catch (e) {
           console.error('Redirect login also failed:', e);
-          setAuthError(`Re-login failed: ${e.message}`);
+          setAuthError(`Re-login failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
         }
       } else {
-        setAuthError(`Token error: ${error.message}`);
+        setAuthError(`Token error: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
       return '';
     }
@@ -314,7 +314,7 @@ const Auth0AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         sessionStorage.removeItem('requestedRole');
       } catch (error) {
         console.error('Error refreshing profile:', error);
-        setAuthError(`Refresh failed: ${error.message}`);
+        setAuthError(`Refresh failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       } finally {
         setIsLoadingProfile(false);
       }

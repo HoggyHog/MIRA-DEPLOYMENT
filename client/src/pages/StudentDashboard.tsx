@@ -29,6 +29,7 @@ import HomeworkSection from '@/components/HomeworkSection';
 import StudySchedule from '@/components/StudySchedule';
 import ProgressAnalytics from '@/components/ProgressAnalytics';
 
+
 const StudentDashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
 

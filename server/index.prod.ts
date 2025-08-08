@@ -3,6 +3,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import fileUpload from "express-fileupload";
 import { registerRoutes } from "./routes";
 import { createProxyMiddleware } from 'http-proxy-middleware';
+import fs from "fs";
+import path from "path";
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -43,6 +45,24 @@ app.use((req, res, next) => {
   next();
 });
 
+// Production static file serving function
+function serveStatic(app: express.Express) {
+  const distPath = path.resolve(import.meta.dirname, "..", "dist", "public");
+
+  if (!fs.existsSync(distPath)) {
+    throw new Error(
+      `Could not find the build directory: ${distPath}, make sure to build the client first`,
+    );
+  }
+
+  app.use(express.static(distPath));
+
+  // fall through to index.html if the file doesn't exist
+  app.use("*", (_req, res) => {
+    res.sendFile(path.resolve(distPath, "index.html"));
+  });
+}
+
 (async () => {
   const server = await registerRoutes(app);
 
@@ -54,7 +74,7 @@ app.use((req, res, next) => {
     throw err;
   });
 
-  // Register the proxy BEFORE Vite/static
+  // Register the proxy BEFORE static files
   app.use('/api', createProxyMiddleware({
     target: 'http://localhost:8001',  // FastAPI server
     changeOrigin: true,
@@ -72,16 +92,8 @@ app.use((req, res, next) => {
     }
   }));
 
-  // Vite/static setup LAST
-  if (process.env.NODE_ENV === "development") {
-    // Dynamic import for development only
-    const { setupVite } = await import("./vite");
-    await setupVite(app, server);
-  } else {
-    // Dynamic import for production only
-    const { serveStatic } = await import("./vite");
-    serveStatic(app);
-  }
+  // Serve static files for production
+  serveStatic(app);
 
   // ALWAYS serve the app on port 3000
   const port = 3000;
@@ -91,4 +103,4 @@ app.use((req, res, next) => {
   }, () => {
     console.log(`serving on port ${port}`);
   });
-})();
+})(); 

@@ -65,6 +65,7 @@ export const verifyToken = async (req: Request, res: Response, next: NextFunctio
         sub: decoded.sub
       };
       
+      console.log('verifyToken set req.auth:', req.auth);
       return next();
     }
     
@@ -99,18 +100,56 @@ export const verifyToken = async (req: Request, res: Response, next: NextFunctio
 // Middleware to get user data after token verification
 export const attachUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    console.log('attachUser middleware called with auth:', req.auth);
     if (!req.auth?.sub) {
       return res.status(401).json({ error: 'No user ID in token' });
     }
     
     // Get user data from database
-    const user = await storage.getUserByAuth0Id(req.auth.sub);
+    let user;
+    try {
+      user = await storage.getUserByAuth0Id(req.auth.sub);
+    } catch (dbError) {
+      console.log('Database unavailable, checking in-memory store');
+      // Database is unavailable, check in-memory store
+      const memoryUsers = (global as any).memoryUsers || new Map();
+      
+      // Check for both student and teacher roles
+      const studentKey = `${req.auth.sub}_student`;
+      const teacherKey = `${req.auth.sub}_teacher`;
+      
+      const studentUser = memoryUsers.get(studentKey);
+      const teacherUser = memoryUsers.get(teacherKey);
+      
+      if (studentUser?.user) {
+        user = studentUser.user;
+      } else if (teacherUser?.user) {
+        user = teacherUser.user;
+      }
+    }
     
     if (user) {
+      console.log('Found user in database:', user);
       req.auth.role = user.role;
       req.auth.user = user;
       // Also set userId for compatibility
       (req as any).user = { userId: user.id };
+    } else if (process.env.NODE_ENV === 'development') {
+      // In development, create a mock user if not found
+      console.log('Creating mock user for development:', req.auth.sub);
+      const mockUser = {
+        id: req.auth.sub,
+        auth0_id: req.auth.sub,
+        email: 'demo@mira.local',
+        name: 'Demo User',
+        role: 'teacher', // Default to teacher for development
+        created_at: new Date(),
+        updated_at: new Date()
+      };
+      console.log('Created mock user:', mockUser);
+      req.auth.role = mockUser.role;
+      req.auth.user = mockUser;
+      (req as any).user = { userId: mockUser.id };
     }
     
     next();

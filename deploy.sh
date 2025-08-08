@@ -55,12 +55,19 @@ check_prerequisites() {
         exit 1
     fi
     
+    print_success "Prerequisites check passed"
+}
+
+# Function to check deployment prerequisites
+check_deployment_prerequisites() {
+    print_status "Checking deployment prerequisites..."
+    
     if [ ! -f "$SSH_KEY" ]; then
         print_error "SSH key not found at $SSH_KEY"
         exit 1
     fi
     
-    print_success "Prerequisites check passed"
+    print_success "Deployment prerequisites check passed"
 }
 
 # Function to build the application
@@ -81,7 +88,7 @@ build_application() {
     
     # Build the application
     print_status "Running build process..."
-    npm run build
+    npm run build:prod
     
     if [ ! -d "dist" ]; then
         print_error "Build failed - dist directory not created"
@@ -166,7 +173,7 @@ deploy_on_ec2() {
         # Start the application
         print_status "Starting Node.js application..."
         cd /home/ubuntu/app
-        nohup NODE_ENV=production node dist/index.js > node.log 2>&1 &
+        nohup bash -c 'NODE_ENV=production node dist/index.js' > node.log 2>&1 &
         
         # Wait for the application to start
         sleep 5
@@ -301,6 +308,9 @@ main() {
     
     # Check prerequisites
     check_prerequisites
+    
+    # Check deployment prerequisites
+    #check_deployment_prerequisites
     
     # Build application
     build_application

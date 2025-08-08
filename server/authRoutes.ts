@@ -6,6 +6,7 @@ import fetch from 'node-fetch';
 
 // In-memory user store for when database is unavailable
 const memoryUsers = new Map<string, any>();
+(global as any).memoryUsers = memoryUsers;
 
 const router = Router();
 
@@ -147,6 +148,7 @@ router.get('/profile', async (req, res) => {
         
         // Create new user
         const newUser = await storage.createUser({
+          id: auth0Id,
           auth0_id: auth0Id,
           email: email,
           name: name,

@@ -20,9 +20,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/auth', authRoutes);
 
   // Public routes (no authentication required) - These are now handled by FastAPI
-  // app.get('/api/config-options', getConfigOptions);
-  // app.get('/api/lesson-config-options', getLessonConfigOptions);
-  // app.get('/api/practice-config-options', getPracticeConfigOptions);
+  app.get('/api/config-options', getConfigOptions);
+  app.get('/api/lesson-config-options', getLessonConfigOptions);
+  app.get('/api/practice-config-options', getPracticeConfigOptions);
 
   // Protected routes - require authentication
   app.use('/api/protected', verifyToken);
@@ -57,7 +57,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/ai-tutor/chat', chatWithTutor);
   
   // Teacher content management routes - backward compatibility
-  app.use('/api/teacher-content', teacherContentRoutes);
+  app.use('/api/teacher-content', verifyToken, attachUser, requireTeacher, teacherContentRoutes);
 
   const httpServer = createServer(app);
 

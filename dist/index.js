@@ -1,6 +1,6 @@
-// server/index.ts
+// server/index.prod.ts
 import "dotenv/config";
-import express2 from "express";
+import express from "express";
 import fileUpload from "express-fileupload";
 
 // server/routes.ts
@@ -98,6 +98,15 @@ print(json.dumps(result))
     });
   }
 };
+var getConfigOptions = async (req, res) => {
+  res.json({
+    grades: ["6", "7", "8", "9", "10", "11", "12"],
+    subjects: ["Mathematics", "Science", "English", "Social Studies", "Hindi"],
+    difficulty_levels: ["easy", "medium", "hard", "mixed"],
+    question_types: ["mcq", "short_answer", "long_answer", "numerical", "diagram", "mixed"],
+    exam_durations: ["30", "60", "90", "120", "180"]
+  });
+};
 
 // server/lessonRoutes.ts
 import fetch from "node-fetch";
@@ -161,6 +170,13 @@ var generateLesson = async (req, res) => {
       error: error instanceof Error ? error.message : "Failed to generate lesson with enhanced RAG integration"
     });
   }
+};
+var getLessonConfigOptions = async (req, res) => {
+  res.json({
+    subjects: ["Mathematics", "Science", "English", "Social Studies", "Hindi", "Physics", "Chemistry", "Biology"],
+    grade_levels: ["6", "7", "8", "9", "10", "11", "12"],
+    difficulty_levels: ["easy", "medium", "hard", "mixed"]
+  });
 };
 
 // server/practicePlaygroundRoutes.ts
@@ -568,6 +584,30 @@ Analyze this section and provide JSON response:
     general_feedback: `Analysis completed for ${questionAnalyses.length} sections. Overall performance: ${overallScore}%. Focus on addressing identified misconceptions and building on your strengths.`
   };
 }
+var getPracticeConfigOptions = async (req, res) => {
+  res.json({
+    subjects: ["Mathematics", "Science", "English", "Social Studies", "Hindi", "Physics", "Chemistry", "Biology"],
+    grades: ["6", "7", "8", "9", "10", "11", "12"],
+    analysis_types: ["detailed", "quick", "conceptual"],
+    supported_formats: ["PDF", "JPEG", "PNG", "BMP", "TIFF", "WebP"],
+    input_methods: ["upload_pdf", "upload_image", "multi_image_upload"],
+    max_file_size: "10MB",
+    max_images_per_submission: 10,
+    ocr_features: {
+      handwriting_recognition: true,
+      mathematical_expressions: true,
+      diagram_text_extraction: true,
+      multi_language_support: true
+    },
+    features: {
+      cbse_analysis: true,
+      step_by_step_feedback: true,
+      misconception_detection: true,
+      improvement_suggestions: true,
+      ocr_preview: true
+    }
+  });
+};
 
 // server/aiTutorRoutes.ts
 import OpenAI2 from "openai";
@@ -1998,6 +2038,9 @@ var teacherContentRoutes_default = router3;
 // server/routes.ts
 async function registerRoutes(app2) {
   app2.use("/api/auth", authRoutes_default);
+  app2.get("/api/config-options", getConfigOptions);
+  app2.get("/api/lesson-config-options", getLessonConfigOptions);
+  app2.get("/api/practice-config-options", getPracticeConfigOptions);
   app2.use("/api/protected", verifyToken);
   app2.post("/api/protected/generate-exam", requireTeacher, generateExamPaper);
   app2.post("/api/protected/generate-lesson", requireTeacher, generateLesson);
@@ -2023,113 +2066,13 @@ async function registerRoutes(app2) {
   return httpServer;
 }
 
-// server/vite.ts
-import express from "express";
-import fs2 from "fs";
-import path2 from "path";
-import { createServer as createViteServer, createLogger } from "vite";
-
-// vite.config.ts
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import path from "path";
-import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
-var vite_config_default = defineConfig({
-  plugins: [
-    react(),
-    runtimeErrorOverlay(),
-    ...process.env.NODE_ENV !== "production" && process.env.REPL_ID !== void 0 ? [
-      await import("@replit/vite-plugin-cartographer").then(
-        (m) => m.cartographer()
-      )
-    ] : []
-  ],
-  resolve: {
-    alias: {
-      "@": path.resolve(import.meta.dirname, "client", "src"),
-      "@shared": path.resolve(import.meta.dirname, "shared"),
-      "@assets": path.resolve(import.meta.dirname, "attached_assets")
-    }
-  },
-  root: path.resolve(import.meta.dirname, "client"),
-  build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
-    emptyOutDir: true
-  }
-});
-
-// server/vite.ts
-import { nanoid } from "nanoid";
-var viteLogger = createLogger();
-function log(message, source = "express") {
-  const formattedTime = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true
-  });
-  console.log(`${formattedTime} [${source}] ${message}`);
-}
-async function setupVite(app2, server) {
-  const serverOptions = {
-    middlewareMode: true,
-    hmr: { server },
-    allowedHosts: true
-  };
-  const vite = await createViteServer({
-    ...vite_config_default,
-    configFile: false,
-    customLogger: {
-      ...viteLogger,
-      error: (msg, options) => {
-        viteLogger.error(msg, options);
-        process.exit(1);
-      }
-    },
-    server: serverOptions,
-    appType: "custom"
-  });
-  app2.use(vite.middlewares);
-  app2.use("*", async (req, res, next) => {
-    const url = req.originalUrl;
-    try {
-      const clientTemplate = path2.resolve(
-        import.meta.dirname,
-        "..",
-        "client",
-        "index.html"
-      );
-      let template = await fs2.promises.readFile(clientTemplate, "utf-8");
-      template = template.replace(
-        `src="/src/main.tsx"`,
-        `src="/src/main.tsx?v=${nanoid()}"`
-      );
-      const page = await vite.transformIndexHtml(url, template);
-      res.status(200).set({ "Content-Type": "text/html" }).end(page);
-    } catch (e) {
-      vite.ssrFixStacktrace(e);
-      next(e);
-    }
-  });
-}
-function serveStatic(app2) {
-  const distPath = path2.resolve(import.meta.dirname, "public");
-  if (!fs2.existsSync(distPath)) {
-    throw new Error(
-      `Could not find the build directory: ${distPath}, make sure to build the client first`
-    );
-  }
-  app2.use(express.static(distPath));
-  app2.use("*", (_req, res) => {
-    res.sendFile(path2.resolve(distPath, "index.html"));
-  });
-}
-
-// server/index.ts
+// server/index.prod.ts
 import { createProxyMiddleware } from "http-proxy-middleware";
-var app = express2();
-app.use(express2.json({ limit: "50mb" }));
-app.use(express2.urlencoded({ extended: false, limit: "50mb" }));
+import fs2 from "fs";
+import path from "path";
+var app = express();
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: false, limit: "50mb" }));
 app.use(fileUpload({
   limits: { fileSize: 50 * 1024 * 1024 },
   // 50MB limit
@@ -2138,7 +2081,7 @@ app.use(fileUpload({
 }));
 app.use((req, res, next) => {
   const start = Date.now();
-  const path3 = req.path;
+  const path2 = req.path;
   let capturedJsonResponse = void 0;
   const originalResJson = res.json;
   res.json = function(bodyJson, ...args) {
@@ -2147,19 +2090,31 @@ app.use((req, res, next) => {
   };
   res.on("finish", () => {
     const duration = Date.now() - start;
-    if (path3.startsWith("/api")) {
-      let logLine = `${req.method} ${path3} ${res.statusCode} in ${duration}ms`;
+    if (path2.startsWith("/api")) {
+      let logLine = `${req.method} ${path2} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
       if (logLine.length > 80) {
         logLine = logLine.slice(0, 79) + "\u2026";
       }
-      log(logLine);
+      console.log(logLine);
     }
   });
   next();
 });
+function serveStatic(app2) {
+  const distPath = path.resolve(import.meta.dirname, "..", "dist", "public");
+  if (!fs2.existsSync(distPath)) {
+    throw new Error(
+      `Could not find the build directory: ${distPath}, make sure to build the client first`
+    );
+  }
+  app2.use(express.static(distPath));
+  app2.use("*", (_req, res) => {
+    res.sendFile(path.resolve(distPath, "index.html"));
+  });
+}
 (async () => {
   const server = await registerRoutes(app);
   app.use((err, _req, res, _next) => {
@@ -2175,26 +2130,22 @@ app.use((req, res, next) => {
     logLevel: "debug",
     // no pathRewrite needed
     onProxyReq: (proxyReq, req, res) => {
-      log(`\u{1F500} Proxying ${req.method} ${req.path} to FastAPI`);
+      console.log(`\u{1F500} Proxying ${req.method} ${req.path} to FastAPI`);
     },
     onProxyRes: (proxyRes, req, res) => {
-      log(`\u2705 FastAPI response: ${proxyRes.statusCode} for ${req.method} ${req.path}`);
+      console.log(`\u2705 FastAPI response: ${proxyRes.statusCode} for ${req.method} ${req.path}`);
     },
     onError: (err, req, res) => {
-      log(`\u274C Proxy error for ${req.method} ${req.path}: ${err.message}`);
+      console.log(`\u274C Proxy error for ${req.method} ${req.path}: ${err.message}`);
       res.status(500).json({ error: "Proxy error", details: err.message });
     }
   }));
-  if (app.get("env") === "development") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
-  }
+  serveStatic(app);
   const port = 3e3;
   server.listen({
     port,
     host: "0.0.0.0"
   }, () => {
-    log(`serving on port ${port}`);
+    console.log(`serving on port ${port}`);
   });
 })();
