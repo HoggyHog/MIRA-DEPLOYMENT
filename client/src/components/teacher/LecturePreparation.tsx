@@ -460,7 +460,7 @@ export const LecturePreparation = () => {
     try {
       const token = await getAccessTokenSilently();
       
-      const response = await fetch('/api/teacher-content/save-lesson', {
+      const response = await fetch('/api/protected/teacher-content/save-lesson', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

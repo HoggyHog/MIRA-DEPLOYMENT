@@ -78,7 +78,7 @@ export const SavedContent = () => {
     try {
       setLoading(true);
       const token = await getAccessTokenSilently();
-      const response = await fetch('/api/teacher-content/content-generations', {
+      const response = await fetch('/api/protected/teacher-content/content-generations', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -122,7 +122,7 @@ export const SavedContent = () => {
   const toggleFavorite = async (contentId: number, currentStatus: boolean) => {
     try {
       const token = await getAccessTokenSilently();
-      const response = await fetch(`/api/teacher-content/content-generations/${contentId}`, {
+      const response = await fetch(`/api/protected/teacher-content/content-generations/${contentId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -156,7 +156,7 @@ export const SavedContent = () => {
 
     try {
       const token = await getAccessTokenSilently();
-      const response = await fetch(`/api/teacher-content/content-generations/${contentId}`, {
+      const response = await fetch(`/api/protected/teacher-content/content-generations/${contentId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`

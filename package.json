@@ -4,7 +4,7 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "dev": "NODE_ENV=development tsx server/index.ts",
+    "dev": "DATABASE_URL='postgresql://neondb_owner:npg_3EHCfhMwO2cK@ep-weathered-pine-a1t0ojee.ap-southeast-1.aws.neon.tech/neondb?sslmode=require' NODE_ENV=development tsx server/index.ts",
     "dev:full": "./start_services.sh",
     "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist --define:NODE_ENV=production",
     "build:server": "NODE_ENV=production esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist --define:NODE_ENV=production",

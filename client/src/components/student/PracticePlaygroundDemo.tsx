@@ -227,7 +227,7 @@ const PracticePlaygroundDemo = () => {
     try {
       const token = await getAccessTokenSilently();
       
-      const response = await fetch('/api/teacher-content/save-practice-analysis', {
+      const response = await fetch('/api/protected/teacher-content/save-practice-analysis', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

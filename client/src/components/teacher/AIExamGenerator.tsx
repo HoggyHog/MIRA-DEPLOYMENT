@@ -443,7 +443,7 @@ export const AIExamGenerator = () => {
     try {
       const token = await getAccessTokenSilently();
       
-      const response = await fetch('/api/teacher-content/save-exam', {
+      const response = await fetch('/api/protected/teacher-content/save-exam', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
