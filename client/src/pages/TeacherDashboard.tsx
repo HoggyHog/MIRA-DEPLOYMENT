@@ -65,13 +65,6 @@ const TeacherDashboard = () => {
                   <p className="opacity-90">{teacherName} • {teacherSubject} • {teacherDepartment}</p>
                 </div>
               </div>
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2">
-                  <AntBadge count={notifications.length} offset={[0, 0]}>
-                    <Bell className="w-5 h-5" />
-                  </AntBadge>
-                </div>
-              </div>
             </div>
           </CardContent>
         </Card>
