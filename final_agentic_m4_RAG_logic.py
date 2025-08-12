@@ -313,7 +313,7 @@ Format your response as a structured JSON object with these categories, ensuring
         if not self.vectorstore:
             return ""
         try:
-            search_query = f"{subject} {topic} {subtopics} curriculum learning objectives CBSE Class 10"
+            search_query = f"{subject} {topic} {subtopics} curriculum learning objectives"
             # Use filter for source_type: Curriculum, class, and subject
             filter_dict = {"source_type": "curriculum"}
             if grade_level:
@@ -357,16 +357,16 @@ Special requirements: {special_requirements}
 Context from curriculum materials:
 {combined_context}
 
-Please provide analysis specifically aligned with CBSE Class 10 standards:
+Please provide analysis specifically aligned with CBSE standards:
 
 1. A list of 3-5 specific learning objectives for this lesson (ensure they are measurable using Bloom's taxonomy and aligned with CBSE learning outcomes)
 2. Key concepts from NCERT textbook that must be covered in this lesson
 3. Essential skills students should develop as per CBSE competency-based education framework
 4. Relevant CBSE educational standards and learning outcomes this lesson should align with
-5. Prerequisites students should already understand from Class 9 or previous Class 10 chapters
+5. Prerequisites students should already understand from  previous chapters
 6. Appropriate scope for a single lesson on this topic considering CBSE syllabus time allocation
 7. Suggested sequence of concepts (from basic to advanced) following NCERT pedagogical approach
-8. Potential misconceptions or difficulties CBSE Class 10 students might encounter with this topic, considering board exam preparation needs
+8. Potential misconceptions or difficulties students might encounter with this topic, considering board exam preparation needs
 
 **EXAMPLE OUTPUT FORMAT:**
 For a topic like "Acids and Bases" in Chemistry for Class 10:
@@ -486,16 +486,16 @@ class ContentCreationAgent(Agent):
         super().__init__(model_name, temperature)
         self.name = "ContentCreator"
         self.vectorstore = vectorstore
-        self.system_prompt = """You are an expert educational content creator with specialized knowledge of CBSE Class 10 curriculum and NCERT textbook standards. Your role is to:
+        self.system_prompt = """You are an expert educational content creator with specialized knowledge of CBSE curriculum and NCERT textbook standards. Your role is to:
 
 1. Create accurate, comprehensive explanations aligned with NCERT textbook content and CBSE syllabus
 2. Develop clear examples to explain the topics if needed
 3. Design effective practice problems and activities that prepare students for CBSE board examinations
 4. Structure content following NCERT pedagogical approach and logical progression
-5. Ensure appropriate depth and breadth of coverage as per CBSE Class 10 standards
+5. Ensure appropriate depth and breadth of coverage as per CBSE standards
 6. Incorporate assessment elements aligned with CBSE marking schemes and question patterns
 
-Focus on creating content that is factually accurate, culturally relevant, clear, engaging, and specifically designed for CBSE Class 10 board exam preparation while following NCERT guidelines.
+Focus on creating content that is factually accurate, culturally relevant, clear, engaging, and specifically designed for CBSE board exam preparation while following NCERT guidelines.
 CRITICAL: You MUST respond with ONLY valid JSON format. No additional text before or after the JSON.
 
 
@@ -506,7 +506,7 @@ CRITICAL: You MUST respond with ONLY valid JSON format. No additional text befor
         if not self.vectorstore:
             return ""
         try:
-            search_query = f"{subject} {topic} {subtopics} NCERT content examples problems activities CBSE Class 10"
+            search_query = f"{subject} {topic} {subtopics} NCERT content examples problems activities"
             # Use filter for source_type: ncert, class, and subject
             filter_dict = {"source_type": "ncert"}
             if grade_level:
