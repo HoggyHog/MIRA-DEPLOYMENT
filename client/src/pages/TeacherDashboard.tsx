@@ -1,9 +1,8 @@
 
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+// Switch to Ant Design components for UI enhancements
+import { Tabs as AntTabs, Badge as AntBadge, Tag } from 'antd';
 import { TeacherNavigation } from '@/components/TeacherNavigation';
 import { LecturePreparation } from '@/components/teacher/LecturePreparation';
 import { ClassroomManagement } from '@/components/teacher/ClassroomManagement';
@@ -72,8 +71,9 @@ const TeacherDashboard = () => {
                   <p className="font-semibold">6 Classes • 2 Meetings</p>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <Bell className="w-5 h-5" />
-                  <Badge variant="destructive">{notifications.length}</Badge>
+                  <AntBadge count={notifications.length} offset={[0, 0]}>
+                    <Bell className="w-5 h-5" />
+                  </AntBadge>
                 </div>
               </div>
             </div>
@@ -87,67 +87,81 @@ const TeacherDashboard = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Content Area */}
           <div className="lg:col-span-2">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-              <TabsList className="grid w-full grid-cols-9 bg-white shadow-sm">
-                <TabsTrigger value="lecture" className="flex items-center space-x-2">
-                  <BookOpen className="w-4 h-4" />
-                  <span className="hidden md:inline">Lecture</span>
-                </TabsTrigger>
-                <TabsTrigger value="classroom" className="flex items-center space-x-2">
-                  <Users className="w-4 h-4" />
-                  <span className="hidden md:inline">Classroom</span>
-                </TabsTrigger>
-                <TabsTrigger value="doubts" className="flex items-center space-x-2">
-                  <HelpCircle className="w-4 h-4" />
-                  <span className="hidden md:inline">Doubts</span>
-                </TabsTrigger>
-                <TabsTrigger value="assignments" className="flex items-center space-x-2">
-                  <FileText className="w-4 h-4" />
-                  <span className="hidden md:inline">Assignments</span>
-                </TabsTrigger>
-                <TabsTrigger value="ai-exam" className="flex items-center space-x-2">
-                  <Wand2 className="w-4 h-4" />
-                  <span className="hidden md:inline">AI Exam</span>
-                </TabsTrigger>
-                <TabsTrigger value="practice" className="flex items-center space-x-2">
-                  <Target className="w-4 h-4" />
-                  <span className="hidden md:inline">Practice</span>
-                </TabsTrigger>
-                <TabsTrigger value="analytics" className="flex items-center space-x-2">
-                  <BarChart3 className="w-4 h-4" />
-                  <span className="hidden md:inline">Analytics</span>
-                </TabsTrigger>
-                <TabsTrigger value="schedule" className="flex items-center space-x-2">
-                  <Calendar className="w-4 h-4" />
-                  <span className="hidden md:inline">Schedule</span>
-                </TabsTrigger>
-                <TabsTrigger value="saved" className="flex items-center space-x-2">
-                  <Save className="w-4 h-4" />
-                  <span className="hidden md:inline">Saved</span>
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="lecture">
+            <AntTabs
+              activeKey={activeTab}
+              onChange={(key) => setActiveTab(key as string)}
+              type="line"
+              className="space-y-4"
+            >
+              <AntTabs.TabPane
+                tab={
+                  <span className="flex items-center space-x-2">
+                    <BookOpen className="w-4 h-4" />
+                    <span className="hidden md:inline">Lecture</span>
+                  </span>
+                }
+                key="lecture"
+              >
                 <LecturePreparation />
-              </TabsContent>
-              
-              <TabsContent value="classroom">
+              </AntTabs.TabPane>
+
+              <AntTabs.TabPane
+                tab={
+                  <span className="flex items-center space-x-2">
+                    <Users className="w-4 h-4" />
+                    <span className="hidden md:inline">Classroom</span>
+                  </span>
+                }
+                key="classroom"
+              >
                 <ClassroomManagement />
-              </TabsContent>
-              
-              <TabsContent value="doubts">
+              </AntTabs.TabPane>
+
+              <AntTabs.TabPane
+                tab={
+                  <span className="flex items-center space-x-2">
+                    <HelpCircle className="w-4 h-4" />
+                    <span className="hidden md:inline">Doubts</span>
+                  </span>
+                }
+                key="doubts"
+              >
                 <DoubtResolution />
-              </TabsContent>
-              
-              <TabsContent value="assignments">
+              </AntTabs.TabPane>
+
+              <AntTabs.TabPane
+                tab={
+                  <span className="flex items-center space-x-2">
+                    <FileText className="w-4 h-4" />
+                    <span className="hidden md:inline">Assignments</span>
+                  </span>
+                }
+                key="assignments"
+              >
                 <AssignmentInterface />
-              </TabsContent>
-              
-              <TabsContent value="ai-exam">
+              </AntTabs.TabPane>
+
+              <AntTabs.TabPane
+                tab={
+                  <span className="flex items-center space-x-2">
+                    <Wand2 className="w-4 h-4" />
+                    <span className="hidden md:inline">AI Exam</span>
+                  </span>
+                }
+                key="ai-exam"
+              >
                 <AIExamGenerator />
-              </TabsContent>
-              
-              <TabsContent value="practice">
+              </AntTabs.TabPane>
+
+              <AntTabs.TabPane
+                tab={
+                  <span className="flex items-center space-x-2">
+                    <Target className="w-4 h-4" />
+                    <span className="hidden md:inline">Practice</span>
+                  </span>
+                }
+                key="practice"
+              >
                 <div className="space-y-4">
                   <Card>
                     <CardHeader>
@@ -162,20 +176,44 @@ const TeacherDashboard = () => {
                   </Card>
                   <PracticePlaygroundDemo />
                 </div>
-              </TabsContent>
-              
-              <TabsContent value="analytics">
+              </AntTabs.TabPane>
+
+              <AntTabs.TabPane
+                tab={
+                  <span className="flex items-center space-x-2">
+                    <BarChart3 className="w-4 h-4" />
+                    <span className="hidden md:inline">Analytics</span>
+                  </span>
+                }
+                key="analytics"
+              >
                 <StudentAnalytics />
-              </TabsContent>
-              
-              <TabsContent value="schedule">
+              </AntTabs.TabPane>
+
+              <AntTabs.TabPane
+                tab={
+                  <span className="flex items-center space-x-2">
+                    <Calendar className="w-4 h-4" />
+                    <span className="hidden md:inline">Schedule</span>
+                  </span>
+                }
+                key="schedule"
+              >
                 <ScheduleAttendance />
-              </TabsContent>
-              
-              <TabsContent value="saved">
+              </AntTabs.TabPane>
+
+              <AntTabs.TabPane
+                tab={
+                  <span className="flex items-center space-x-2">
+                    <Save className="w-4 h-4" />
+                    <span className="hidden md:inline">Saved</span>
+                  </span>
+                }
+                key="saved"
+              >
                 <SavedContent />
-              </TabsContent>
-            </Tabs>
+              </AntTabs.TabPane>
+            </AntTabs>
           </div>
 
           {/* Right Sidebar */}
@@ -197,7 +235,7 @@ const TeacherDashboard = () => {
                         <p className="text-xs text-gray-500 mt-1">{notification.time}</p>
                       </div>
                       {notification.type === 'doubt' && (
-                        <Badge variant="secondary">Doubt</Badge>
+                        <Tag color="blue">Doubt</Tag>
                       )}
                     </div>
                   </div>
